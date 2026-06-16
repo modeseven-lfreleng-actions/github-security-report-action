@@ -1,0 +1,115 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Linux Foundation
+"""Org-mode orchestration: gather, classify, and aggregate.
+
+Ties the transport (:mod:`client`), scoping (:mod:`scope`), classification
+(:mod:`classify`) and aggregation (:mod:`report`) together for a single
+organisation, following the Phase 0 strategy: one org-bulk sweep per signal,
+then bounded per-repo enabled-probes. Accepts any object satisfying the client
+protocol so it is testable without a live network.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import datetime as dt
+import logging
+from collections import defaultdict
+from typing import Protocol
+
+from github_security_report import scope
+from github_security_report.classify import RepoFacts, classify_repo
+from github_security_report.config import OrgConfig, ReportConfig
+from github_security_report.models import Repo
+from github_security_report.report import OrgReport, build_org_report
+
+log = logging.getLogger(__name__)
+
+
+class ClientProtocol(Protocol):
+    """The subset of :class:`client.GitHubClient` that orchestration needs."""
+
+    async def list_org_repos(self, org: str) -> list[Repo]: ...
+    async def org_bulk_alerts(self, org: str, kind: str) -> list[dict]: ...
+    async def code_scanning_tools(self, org: str, repo: str) -> tuple[int, set[str]]: ...
+    async def secret_scanning_status(self, org: str, repo: str) -> int: ...
+    async def dependabot_enabled(self, org: str, repo: str) -> bool | None: ...
+    async def scorecard_score(self, org: str, repo: str) -> tuple[int, float | None]: ...
+
+
+def _group_by_repo(alerts: list[dict]) -> dict[str, list[dict]]:
+    """Group org-bulk alerts by repository name (each carries ``repository``)."""
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for alert in alerts:
+        name = (alert.get("repository") or {}).get("name")
+        if name:
+            grouped[name].append(alert)
+    return grouped
+
+
+async def _facts_for_repo(
+    client: ClientProtocol,
+    org: str,
+    repo: Repo,
+    code_scanning: dict[str, list[dict]],
+    dependabot: dict[str, list[dict]],
+    secret: dict[str, list[dict]],
+) -> RepoFacts:
+    cs_status, cs_tools = await client.code_scanning_tools(org, repo.name)
+    secret_status = await client.secret_scanning_status(org, repo.name)
+    dependabot_on = await client.dependabot_enabled(org, repo.name)
+    scorecard_status, score = await client.scorecard_score(org, repo.name)
+    return RepoFacts(
+        repo=repo,
+        code_scanning_status=cs_status,
+        code_scanning_tools=cs_tools,
+        code_scanning_alerts=code_scanning.get(repo.name, []),
+        secret_scanning_status=secret_status,
+        secret_scanning_open=len(secret.get(repo.name, [])),
+        dependabot_enabled=dependabot_on,
+        dependabot_alerts=dependabot.get(repo.name, []),
+        scorecard_status=scorecard_status,
+        scorecard_score=score,
+    )
+
+
+async def collect_org(
+    client: ClientProtocol,
+    org_cfg: OrgConfig,
+    report_cfg: ReportConfig,
+    *,
+    generated_at: dt.datetime | None = None,
+) -> OrgReport:
+    """Collect and build the report for one organisation."""
+    org = org_cfg.name
+    log.info("collecting %s", org)
+    repos = await client.list_org_repos(org)
+    in_scope = scope.filter_repos(
+        repos,
+        include_archived=report_cfg.include_archived,
+        include_test=report_cfg.include_test,
+        exclude=org_cfg.exclude,
+    )
+
+    # One org-bulk sweep per signal (concurrent).
+    cs_alerts, dep_alerts, secret_alerts = await asyncio.gather(
+        client.org_bulk_alerts(org, "code-scanning"),
+        client.org_bulk_alerts(org, "dependabot"),
+        client.org_bulk_alerts(org, "secret-scanning"),
+    )
+    code_scanning = _group_by_repo(cs_alerts)
+    dependabot = _group_by_repo(dep_alerts)
+    secret = _group_by_repo(secret_alerts)
+
+    # Bounded per-repo probes (the client caps real HTTP concurrency).
+    facts = await asyncio.gather(
+        *(
+            _facts_for_repo(client, org, repo, code_scanning, dependabot, secret)
+            for repo in in_scope
+        )
+    )
+
+    signals = [sig for repo_facts in facts for sig in classify_repo(repo_facts)]
+    return build_org_report(
+        org, signals, repo_count=len(in_scope), generated_at=generated_at
+    )
