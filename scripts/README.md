@@ -59,3 +59,15 @@ must review and scrub it before any sample is promoted to `tests/fixtures/` as a
 golden fixture. The script applies aggressive automatic redaction (e.g. the
 secret-scanning `secret` field) but that is a safety net, not a substitute for
 review.
+
+### Fixture sources
+
+- **Enabled / populated states** — `lfreleng-actions` (production org, security
+  features on org-wide).
+- **Disabled states** — `modeseven-lfreleng-actions` (the **canonical**
+  disabled-state source: forks default to security features off). The
+  `dependamerge` fork there is a **mixed-state** repo (CodeQL + Scorecard on,
+  secret scanning + Dependabot off) — ideal for exercising the four-state model
+  in one fixture. Run e.g.
+  `uv run scripts/phase0_capability_spike.py --org modeseven-lfreleng-actions
+  --repo dependamerge --repo gha-workflow-linter`.
