@@ -67,7 +67,13 @@ Four **ranked tables**, each using the four-state model (§6), plus a boolean
 | Code scanning alerts (CodeQL) | REST (org-bulk preferred) | severity counts |
 | Dependabot alerts | GraphQL + REST org-bulk | severity counts |
 | Secret scanning alerts | REST (org-bulk preferred) | open count |
-| OpenSSF Scorecard | external API / SARIF (best-effort) | score (inverted) |
+| OpenSSF Scorecard | code-scanning SARIF, `tool.name == "Scorecard"` | failing-check count/severity (see Phase 0) |
+
+> **Phase 0 correction:** the code-scanning sweep multiplexes tools and must be
+> **partitioned by `tool.name`** — CodeQL findings feed the CodeQL table,
+> `Scorecard` findings feed the Scorecard table. The external
+> `securityscorecards.dev` API 404s across our estate and is not the Scorecard
+> source. See [`docs/phase0-findings.md`](phase0-findings.md).
 
 Posture booleans (no ranking, feed coverage/nag): Security policy, Private
 vulnerability reporting, Security advisories, etc.
@@ -285,11 +291,20 @@ Four presentation surfaces from one canonical dataset:
 
 ## 17. Open items for Phase 0 to resolve
 
-- Exact org-bulk endpoint availability + status codes per signal for our PAT
-  tier.
-- Definitive enabled-probe rules (§6) verified against the real estate.
-- Scorecard data source (external API vs SARIF) and coverage across the estate.
-- Confirm Code Quality remains API-less (keep deferred).
+First spike run recorded in [`docs/phase0-findings.md`](phase0-findings.md).
+
+- ✅ Org-bulk endpoints available for our PAT tier (all `200`); org-bulk-first
+  validated.
+- ✅ Scorecard data source resolved: code-scanning SARIF (`tool.name ==
+  "Scorecard"`), **not** the external API (404s). Code-scanning sweep must be
+  partitioned by `tool.name`.
+- ✅ Severity fields for ranking confirmed present.
+- ⏳ Enabled-probe **negative** cases (secret scanning 404, Dependabot
+  `false`, code scanning `not-configured`) not yet observed — need a
+  deliberately under-configured repo.
+- ⏳ Scorecard table **metric** (failing-check count/severity vs parsing the
+  aggregate 0–10 score from SARIF) — to decide after a follow-up probe.
+- ⏳ Confirm Code Quality remains API-less (keep deferred).
 
 ## 18. Decision log (this session)
 
