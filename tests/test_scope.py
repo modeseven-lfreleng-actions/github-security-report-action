@@ -74,14 +74,8 @@ class TestFilterRepos:
 
 class TestNagScope:
     def test_archived_and_test_never_nagged(self) -> None:
-        assert not scope.in_nag_scope(
-            _repo("old", archived=True), include_archived=False, include_test=False
-        )
-        assert not scope.in_nag_scope(
-            _repo("test-thing"), include_archived=False, include_test=False
-        )
+        assert not scope.in_nag_scope(_repo("old", archived=True))
+        assert not scope.in_nag_scope(_repo("test-thing"))
 
     def test_normal_repo_nagged(self) -> None:
-        assert scope.in_nag_scope(
-            _repo("dependamerge"), include_archived=False, include_test=False
-        )
+        assert scope.in_nag_scope(_repo("dependamerge"))

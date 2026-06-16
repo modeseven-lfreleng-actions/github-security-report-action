@@ -87,12 +87,11 @@ def filter_repos(
     return kept
 
 
-def in_nag_scope(repo: Repo, *, include_archived: bool, include_test: bool) -> bool:
+def in_nag_scope(repo: Repo) -> bool:
     """Whether a repo may appear in nag lists.
 
-    Archived and test repos are never nagged (you cannot, or would not, enable
-    tooling on them), even if they are otherwise reported.
+    Archived and test repos are **never** nagged -- you cannot, or would not,
+    enable tooling on them -- even when they are otherwise reported (e.g. under
+    ``include_archived``/``include_test``).
     """
-    if repo.archived and not include_archived:
-        return False
-    return not (is_test_named(repo.name) and not include_test)
+    return not (repo.archived or is_test_named(repo.name))
