@@ -1,6 +1,6 @@
 ---
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-FileCopyrightText: 2025 The Linux Foundation
+# SPDX-FileCopyrightText: 2026 The Linux Foundation
 
 # Action test/validation workflow
 name: "Test GitHub Action 🧪"
@@ -26,7 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    timeout-minutes: 10 # Increase this timeout value as needed
+      security-events: read  # read this repo's own security data (repo mode)
+    timeout-minutes: 10
     steps:
       # Harden the runner used by this workflow
       # yamllint disable-line rule:line-length
@@ -39,39 +40,18 @@ jobs:
         with:
           persist-credentials: false
 
-      # Perform setup prior to running test(s)
-      - name: "Testing setup step"
-        shell: bash
-        run: |
-          # Testing setup step
-          echo "Testing setup step"
-          echo "Testing setup step/summary output" >> "$GITHUB_STEP_SUMMARY"
-
+      # Repo mode: a self-contained run against this repository using the
+      # ephemeral GITHUB_TOKEN. On pull_request the action runs from source.
       - name: "Running local action: ${{ github.repository }}"
         uses: ./
         with:
-          input: "test input 💬"
+          scope: "repo"
+          token: "${{ github.token }}"
+          fail_threshold: "none"  # informational; do not fail the test build
 
       - name: "Validated local action: ${{ github.repository }}"
         shell: bash
         run: |
           # Local action validation
-          echo "Validated local action: ${{ github.repository }}"
+          echo "Validated local action: ${{ github.repository }} ✅"
           echo "Validation step summary output" >> "$GITHUB_STEP_SUMMARY"
-
-      # yamllint disable-line rule:line-length
-      - name: "Running local action: ${{ github.repository }} [Override Failure]"
-        uses: ./
-        id: failure
-        continue-on-error: true
-        with:
-          invalid_input: "Some garbage"
-
-      # Failure testing is also important
-      - name: "Error if step above did NOT fail"
-        if: steps.failure.outcome == 'success'
-        shell: bash
-        run: |
-          # Error if step above did NOT fail
-          echo "Error: previous test step did NOT fail ❌"
-          exit 1

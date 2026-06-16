@@ -1,0 +1,109 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Linux Foundation
+
+# Scheduled security/quality report. Runs daily, refreshing GitHub Pages every
+# day; the Slack digest is posted only on the configured report_day (the tool
+# owns that decision via the should_notify output).
+name: "🔐 Security Report"
+
+# yamllint disable-line rule:truthy
+on:
+  schedule:
+    # Daily at 09:00 UTC
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+    inputs:
+      force_notify:
+        description: "Post to Slack regardless of report_day"
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: "security-report"
+  cancel-in-progress: false
+
+env:
+  PAGES_URL: "https://lfreleng-actions.github.io/github-security-report-action/"
+
+jobs:
+  report:
+    name: "Generate and publish"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # push to the gh-pages branch
+    timeout-minutes: 20
+    steps:
+      - name: "Harden runner"
+        # yamllint disable-line rule:line-length
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: "Checkout repository"
+        # yamllint disable-line rule:line-length
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: true
+
+      - name: "Generate report"
+        id: report
+        uses: ./
+        with:
+          scope: "org"
+          # Plain JSON in a variable, or base64 JSON in a secret (the tool
+          # accepts either). Secret wins when both are present.
+          config: "${{ secrets.GSR_CONFIG || vars.GSR_CONFIG }}"
+          # Org mode needs a classic PAT (security_events, repo, read:org); the
+          # ephemeral GITHUB_TOKEN cannot read org-wide security data.
+          token: "${{ secrets.SECURITY_REPORT_PAT }}"
+          output_dir: "site"
+          pages_url: "${{ env.PAGES_URL }}"
+          force_notify: "${{ inputs.force_notify || 'false' }}"
+
+      - name: "Publish to GitHub Pages"
+        shell: bash
+        env:
+          GIT_AUTHOR_NAME: "lf-releng-reports-bot"
+          GIT_AUTHOR_EMAIL: "lf-releng+reports-bot@linuxfoundation.org"
+          GIT_COMMITTER_NAME: "lf-releng-reports-bot"
+          GIT_COMMITTER_EMAIL: "lf-releng+reports-bot@linuxfoundation.org"
+        run: |
+          # Publish ./site to the gh-pages branch
+          if [ ! -d site ]; then
+            echo "No site directory generated; nothing to publish"
+            exit 0
+          fi
+          work="$(mktemp -d)"
+          git worktree add --orphan -b gh-pages-tmp "$work" 2>/dev/null || {
+            git fetch origin gh-pages || true
+            git worktree add "$work" gh-pages 2>/dev/null \
+              || git worktree add --detach "$work"
+          }
+          # Replace contents wholesale with the freshly generated site.
+          find "$work" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -a site/. "$work"/
+          touch "$work/.nojekyll"
+          (
+            cd "$work"
+            git add -A
+            if git diff --cached --quiet; then
+              echo "No changes to publish"
+              exit 0
+            fi
+            git commit -m "Chore: update security report ($(date -u +%Y-%m-%dT%H:%MZ))"
+            git push --force origin HEAD:gh-pages
+          )
+          git worktree remove --force "$work" || true
+
+      - name: "Send Slack digest"
+        if: steps.report.outputs.should_notify == 'true' && steps.report.outputs.slack_payload != ''
+        # yamllint disable-line rule:line-length
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c  # v3.0.3
+        with:
+          method: "chat.postMessage"
+          token: "${{ secrets.SLACK_BOT_TOKEN }}"
+          payload: "${{ steps.report.outputs.slack_payload }}"

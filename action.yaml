@@ -1,46 +1,118 @@
 ---
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-FileCopyrightText: 2025 The Linux Foundation
+# SPDX-FileCopyrightText: 2026 The Linux Foundation
 
-# actions-template
-name: "🛠️ Actions Template"
-description: "Description of action"
-# Any relevant notes/observations can go here
+name: "🔐 GitHub Security Report"
+description: "Security and quality reporting across GitHub organisations"
 
 inputs:
-  input:
-    description: "Description of input"
-    required: true
+  scope:
+    description: "Operating mode: auto | org | repo"
+    required: false
+    default: "auto"
+  config:
+    description: "JSON config (raw or base64), e.g. a vars/secrets entry"
+    required: false
+    default: ""
+  org:
+    description: "Single organisation (shorthand for org mode)"
+    required: false
+    default: ""
+  repo:
+    description: "owner/name for repo mode (defaults to this repository)"
+    required: false
+    default: ""
+  token:
+    description: "GitHub token (classic PAT for org mode; GITHUB_TOKEN for repo mode)"
+    required: false
+    default: ${{ github.token }}
+  token_env:
+    description: "Environment variable name the tool reads the token from"
+    required: false
+    default: "GITHUB_TOKEN"
+  output_dir:
+    description: "Directory for GitHub Pages output (org mode)"
+    required: false
+    default: ""
+  pages_url:
+    description: "Published GitHub Pages URL (used in the Slack link)"
+    required: false
+    default: ""
+  top_n:
+    description: "Offenders shown per signal in the Slack digest"
+    required: false
+    default: "10"
+  fail_threshold:
+    description: "none | low | medium | high | critical | any (repo mode gate)"
+    required: false
+    default: "none"
+  force_notify:
+    description: "Post to Slack regardless of report_day"
+    required: false
+    default: "false"
+  tool_version:
+    description: "Published PyPI version to run (ignored on pull_request, which runs from source)"
+    required: false
+    default: "0.1.0"
 
 outputs:
-  output:
-    description: "Description of output"
-    value: ${{ steps.code.outputs.output }}
+  should_notify:
+    description: "Whether today is a Slack notification day"
+    value: ${{ steps.run.outputs.should_notify }}
+  slack_payload:
+    description: "Prebuilt Slack chat.postMessage payload (JSON)"
+    value: ${{ steps.run.outputs.slack_payload }}
+  failed:
+    description: "Whether the repo-mode fail threshold was met"
+    value: ${{ steps.run.outputs.failed }}
 
 runs:
   using: "composite"
   steps:
-    - name: "Friendly Name"
-      id: code
+    - name: "Set up uv"
+      # yamllint disable-line rule:line-length
+      uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v7.2.1
+
+    - name: "Run github-security-report"
+      id: run
       shell: bash
       env:
-        INPUT_VALUE: ${{ inputs.input }}
+        # Expose the token under the configured environment-variable name so
+        # the tool resolves it by name (per-org token_env, default GITHUB_TOKEN).
+        TOKEN_ENV: ${{ inputs.token_env }}
+        TOKEN_VALUE: ${{ inputs.token }}
+        INPUT_SCOPE: ${{ inputs.scope }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_ORG: ${{ inputs.org }}
+        INPUT_REPO: ${{ inputs.repo }}
+        INPUT_OUTPUT_DIR: ${{ inputs.output_dir }}
+        INPUT_PAGES_URL: ${{ inputs.pages_url }}
+        INPUT_TOP_N: ${{ inputs.top_n }}
+        INPUT_FAIL_THRESHOLD: ${{ inputs.fail_threshold }}
+        INPUT_FORCE_NOTIFY: ${{ inputs.force_notify }}
+        TOOL_VERSION: ${{ inputs.tool_version }}
+        EVENT_NAME: ${{ github.event_name }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
-        # Friendly Name
-        input="$INPUT_VALUE"
-        if [ -z "$input" ]; then
-          echo "Error: mandatory input was not set/configured ❌"
-          exit 1
+        # Run github-security-report
+        export "${TOKEN_ENV}=${TOKEN_VALUE}"
+
+        # Hybrid runtime: pull requests exercise the checked-out source so
+        # unreleased code is tested; everything else runs the pinned release.
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          SOURCE="$ACTION_PATH"
+        else
+          SOURCE="github-security-report==${TOOL_VERSION}"
         fi
 
-        # Write the output using the multiline heredoc format with a random
-        # delimiter so that an input containing newlines cannot inject
-        # additional keys into $GITHUB_OUTPUT (output-file injection).
-        delimiter="ghadelim_$(openssl rand -hex 16 2>/dev/null || date +%s%N)"
-        {
-          printf '%s<<%s\n' 'output' "$delimiter"
-          printf '%s\n' "$input"
-          printf '%s\n' "$delimiter"
-        } >> "$GITHUB_OUTPUT"
-        echo "Action received: $input ✅"
-        echo "Action received: $input ✅" >> "$GITHUB_STEP_SUMMARY"
+        args=(report --scope "$INPUT_SCOPE" --token-env "$TOKEN_ENV" --no-color)
+        [ -n "$INPUT_CONFIG" ] && args+=(--config-data "$INPUT_CONFIG")
+        [ -n "$INPUT_ORG" ] && args+=(--org "$INPUT_ORG")
+        [ -n "$INPUT_REPO" ] && args+=(--repo "$INPUT_REPO")
+        [ -n "$INPUT_OUTPUT_DIR" ] && args+=(--output-dir "$INPUT_OUTPUT_DIR")
+        [ -n "$INPUT_PAGES_URL" ] && args+=(--pages-url "$INPUT_PAGES_URL")
+        [ -n "$INPUT_TOP_N" ] && args+=(--top-n "$INPUT_TOP_N")
+        [ -n "$INPUT_FAIL_THRESHOLD" ] && args+=(--fail-threshold "$INPUT_FAIL_THRESHOLD")
+        [ "$INPUT_FORCE_NOTIFY" = "true" ] && args+=(--force-notify)
+
+        uvx --from "$SOURCE" github-security-report "${args[@]}"
