@@ -58,3 +58,6 @@ MANIFEST
 
 # Node
 node_modules/*
+
+# Phase 0 capability spike: captured live API data (review/scrub before use)
+phase0-output/
