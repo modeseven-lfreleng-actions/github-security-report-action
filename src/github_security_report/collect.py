@@ -37,6 +37,18 @@ class ClientProtocol(Protocol):
     async def scorecard_score(self, org: str, repo: str) -> tuple[int, float | None]: ...
 
 
+class RepoClientProtocol(Protocol):
+    """Extra per-repo methods needed for repo mode."""
+
+    async def get_repo(self, org: str, repo: str) -> Repo | None: ...
+    async def code_scanning_tools(self, org: str, repo: str) -> tuple[int, set[str]]: ...
+    async def repo_code_scanning_alerts(self, org: str, repo: str) -> tuple[int, list[dict]]: ...
+    async def repo_secret_scanning(self, org: str, repo: str) -> tuple[int, int]: ...
+    async def dependabot_enabled(self, org: str, repo: str) -> bool | None: ...
+    async def repo_dependabot_alerts(self, org: str, repo: str) -> tuple[int, list[dict]]: ...
+    async def scorecard_score(self, org: str, repo: str) -> tuple[int, float | None]: ...
+
+
 def _group_by_repo(alerts: list[dict]) -> dict[str, list[dict]]:
     """Group org-bulk alerts by repository name (each carries ``repository``)."""
     grouped: dict[str, list[dict]] = defaultdict(list)
@@ -113,3 +125,37 @@ async def collect_org(
     return build_org_report(
         org, signals, repo_count=len(in_scope), generated_at=generated_at
     )
+
+
+async def collect_repo(
+    client: RepoClientProtocol, owner: str, repo_name: str
+) -> tuple[Repo | None, list]:
+    """Collect and classify a single repository (repo mode, ``GITHUB_TOKEN``).
+
+    Uses only per-repo endpoints -- no org-bulk sweep and no org-level scope.
+    Returns the repository identity (None if unreadable) and its classified
+    signals.
+    """
+    repo = await client.get_repo(owner, repo_name)
+    if repo is None:
+        log.error("cannot read %s/%s (check token and permissions)", owner, repo_name)
+        return None, []
+    cs_status, cs_tools = await client.code_scanning_tools(owner, repo_name)
+    _, cs_alerts = await client.repo_code_scanning_alerts(owner, repo_name)
+    secret_status, secret_open = await client.repo_secret_scanning(owner, repo_name)
+    dependabot_on = await client.dependabot_enabled(owner, repo_name)
+    _, dependabot_alerts = await client.repo_dependabot_alerts(owner, repo_name)
+    scorecard_status, score = await client.scorecard_score(owner, repo_name)
+    facts = RepoFacts(
+        repo=repo,
+        code_scanning_status=cs_status,
+        code_scanning_tools=cs_tools,
+        code_scanning_alerts=cs_alerts,
+        secret_scanning_status=secret_status,
+        secret_scanning_open=secret_open,
+        dependabot_enabled=dependabot_on,
+        dependabot_alerts=dependabot_alerts,
+        scorecard_status=scorecard_status,
+        scorecard_score=score,
+    )
+    return repo, classify_repo(facts)

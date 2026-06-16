@@ -115,6 +115,25 @@ class GitHubClient:
             next_url = resp.links.get("next", {}).get("url")
             merged = None  # the next link already encodes the query
 
+    async def _get_list(self, url: str, **params: object) -> tuple[int, list[dict]]:
+        """GET a paginated list, returning (first-page status, all items).
+
+        The status is preserved because, for per-repo endpoints, it is itself a
+        signal (404 = feature disabled).
+        """
+        resp = await self._request("GET", url, params={**params, "per_page": 100})
+        if resp.status_code != 200:
+            return resp.status_code, []
+        items = list(resp.json())
+        next_url = resp.links.get("next", {}).get("url")
+        while next_url:
+            resp = await self._request("GET", next_url)
+            if resp.status_code != 200:
+                break
+            items.extend(resp.json())
+            next_url = resp.links.get("next", {}).get("url")
+        return 200, items
+
     # ------------------------------------------------------------------ #
     # Repositories
     # ------------------------------------------------------------------ #
@@ -210,3 +229,41 @@ class GitHubClient:
         if resp.status_code != 200:
             return resp.status_code, None
         return 200, resp.json().get("score")
+
+    # ------------------------------------------------------------------ #
+    # Per-repo data (repo mode)
+    # ------------------------------------------------------------------ #
+    async def get_repo(self, org: str, repo: str) -> Repo | None:
+        """Fetch a single repository's identity."""
+        resp = await self._request("GET", f"{self._api_url}/repos/{org}/{repo}")
+        if resp.status_code != 200:
+            return None
+        raw = resp.json()
+        return Repo(
+            name=raw["name"],
+            full_name=raw["full_name"],
+            html_url=raw["html_url"],
+            archived=raw.get("archived", False),
+            fork=raw.get("fork", False),
+            is_template=raw.get("is_template", False),
+            private=raw.get("private", False),
+        )
+
+    async def repo_code_scanning_alerts(self, org: str, repo: str) -> tuple[int, list[dict]]:
+        """Open code-scanning alerts for one repo (status, alerts)."""
+        return await self._get_list(
+            f"{self._api_url}/repos/{org}/{repo}/code-scanning/alerts", state="open"
+        )
+
+    async def repo_secret_scanning(self, org: str, repo: str) -> tuple[int, int]:
+        """Open secret-scanning alert (status, open count) for one repo."""
+        status, items = await self._get_list(
+            f"{self._api_url}/repos/{org}/{repo}/secret-scanning/alerts", state="open"
+        )
+        return status, len(items)
+
+    async def repo_dependabot_alerts(self, org: str, repo: str) -> tuple[int, list[dict]]:
+        """Open Dependabot alerts for one repo (status, alerts)."""
+        return await self._get_list(
+            f"{self._api_url}/repos/{org}/{repo}/dependabot/alerts", state="open"
+        )
