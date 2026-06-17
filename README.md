@@ -122,6 +122,7 @@ environment-variable name, never embedded.
 | `fail_threshold` | No | `none` | `none`/`low`/`medium`/`high`/`critical`/`any` (repo mode) |
 | `force_notify` | No | `false` | Post to Slack regardless of `report_day` |
 | `tool_version` | No | `0.1.0` | Published PyPI version (ignored on pull requests) |
+| `use_local_source` | No | `false` | Run from the checked-out source instead of PyPI (for testing unreleased code from any event) |
 
 <!-- markdownlint-enable MD013 -->
 

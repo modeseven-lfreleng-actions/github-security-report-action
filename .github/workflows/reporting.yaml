@@ -19,6 +19,11 @@ on:
         required: false
         type: boolean
         default: false
+      use_local_source:
+        description: "Run the tool from this checkout instead of PyPI (for testing unreleased code)"
+        required: false
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -63,6 +68,7 @@ jobs:
           output_dir: "site"
           pages_url: "${{ env.PAGES_URL }}"
           force_notify: "${{ inputs.force_notify || 'false' }}"
+          use_local_source: "${{ inputs.use_local_source || 'false' }}"
 
       - name: "Publish to GitHub Pages"
         shell: bash

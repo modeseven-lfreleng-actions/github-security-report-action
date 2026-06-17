@@ -54,6 +54,10 @@ inputs:
     description: "Published PyPI version to run (ignored on pull_request, which runs from source)"
     required: false
     default: "0.1.0"
+  use_local_source:
+    description: "Run from this checked-out source instead of the PyPI release (for testing unreleased code from any event)"
+    required: false
+    default: "false"
 
 outputs:
   should_notify:
@@ -93,6 +97,7 @@ runs:
         INPUT_FAIL_THRESHOLD: ${{ inputs.fail_threshold }}
         INPUT_FORCE_NOTIFY: ${{ inputs.force_notify }}
         TOOL_VERSION: ${{ inputs.tool_version }}
+        USE_LOCAL_SOURCE: ${{ inputs.use_local_source }}
         EVENT_NAME: ${{ github.event_name }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
@@ -105,9 +110,10 @@ runs:
         fi
         export "${TOKEN_ENV}=${TOKEN_VALUE}"
 
-        # Hybrid runtime: pull requests exercise the checked-out source so
-        # unreleased code is tested; everything else runs the pinned release.
-        if [ "$EVENT_NAME" = "pull_request" ]; then
+        # Hybrid runtime: pull requests (or an explicit use_local_source
+        # toggle, for testing) exercise the checked-out source so unreleased
+        # code runs; everything else runs the pinned PyPI release.
+        if [ "$EVENT_NAME" = "pull_request" ] || [ "$USE_LOCAL_SOURCE" = "true" ]; then
           SOURCE="$ACTION_PATH"
         else
           SOURCE="github-security-report==${TOOL_VERSION}"

@@ -41,13 +41,15 @@ jobs:
           persist-credentials: false
 
       # Repo mode: a self-contained run against this repository using the
-      # ephemeral GITHUB_TOKEN. On pull_request the action runs from source.
+      # ephemeral GITHUB_TOKEN. Always runs from this checkout (it is a
+      # self-test of the action source, not a published release).
       - name: "Running local action: ${{ github.repository }}"
         uses: ./
         with:
           scope: "repo"
           token: "${{ github.token }}"
           fail_threshold: "none"  # informational; do not fail the test build
+          use_local_source: "true"
 
       - name: "Validated local action: ${{ github.repository }}"
         shell: bash
