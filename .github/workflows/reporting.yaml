@@ -80,8 +80,26 @@ jobs:
         with:
           path: "site"
 
-      - name: "Send Slack digest"
+      - name: "Check Slack configuration"
+        id: slack-config
         if: steps.report.outputs.should_notify == 'true' && steps.report.outputs.slack_payload != ''
+        shell: bash
+        env:
+          SLACK_BOT_TOKEN: "${{ secrets.SLACK_BOT_TOKEN }}"
+        run: |
+          # Gate the Slack step on credential availability so a missing token
+          # disables the integration gracefully rather than failing the job.
+          if [ -n "$SLACK_BOT_TOKEN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            msg="⚠️ Slack integration not available; requires token/credentials"
+            echo "::warning::${msg}"
+            echo "${msg}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: "Send Slack digest"
+        if: steps.slack-config.outputs.configured == 'true'
         # yamllint disable-line rule:line-length
         uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c  # v3.0.3
         with:
