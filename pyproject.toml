@@ -105,8 +105,13 @@ dev = [
 exclude-newer = "7 days"
 
 [tool.uv.pip]
-# Require and verify per-package hashes for pip-style installs.
-require-hashes = true
+# Verify any per-package hashes that are present (e.g. when resolving the
+# locked dependencies). 'require-hashes' is deliberately NOT enabled: it would
+# demand a hash for every requirement including this project itself, which has
+# no hash when installed from source (uv pip install .[test,dev]), breaking the
+# editable/source installs the CI test and SBOM jobs rely on. Reproducibility
+# and supply-chain resistance come from the exact '==' pins, the 7-day
+# exclude-newer cooldown, and the hash-verified uv.lock consumed by uv sync.
 verify-hashes = true
 
 [tool.pytest.ini_options]
