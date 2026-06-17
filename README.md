@@ -104,6 +104,11 @@ environment-variable name, never embedded.
 `report_day` accepts a single weekday, a list of weekdays, `"never"`, or
 `"always"`.
 
+`slack.channel` is optional. The action's `slack_channel` input (wired to the
+`SLACK_CHANNEL_ID` variable in `reporting.yaml`) overrides it, so the channel
+can live as an org/repo variable rather than in the config JSON. It must be the
+channel **ID** (`C0…`), not the name.
+
 ## Inputs
 
 <!-- markdownlint-disable MD013 -->
@@ -118,6 +123,7 @@ environment-variable name, never embedded.
 | `token_env` | No | `GITHUB_TOKEN` | Env var name the tool reads the token from |
 | `output_dir` | No | — | Directory for Pages output (org mode) |
 | `pages_url` | No | — | Published Pages URL (used in the Slack link) |
+| `slack_channel` | No | — | Slack channel ID; overrides the config `slack.channel` (e.g. the `SLACK_CHANNEL_ID` variable) |
 | `top_n` | No | `10` | Offenders per signal in the Slack digest |
 | `fail_threshold` | No | `none` | `none`/`low`/`medium`/`high`/`critical`/`any` (repo mode) |
 | `force_notify` | No | `false` | Post to Slack regardless of `report_day` |

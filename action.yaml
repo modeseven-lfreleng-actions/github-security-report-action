@@ -38,6 +38,10 @@ inputs:
     description: "Published GitHub Pages URL (used in the Slack link)"
     required: false
     default: ""
+  slack_channel:
+    description: "Slack channel ID; overrides the config slack.channel (e.g. the SLACK_CHANNEL_ID variable)"
+    required: false
+    default: ""
   top_n:
     description: "Offenders shown per signal in the Slack digest"
     required: false
@@ -93,6 +97,7 @@ runs:
         INPUT_REPO: ${{ inputs.repo }}
         INPUT_OUTPUT_DIR: ${{ inputs.output_dir }}
         INPUT_PAGES_URL: ${{ inputs.pages_url }}
+        INPUT_SLACK_CHANNEL: ${{ inputs.slack_channel }}
         INPUT_TOP_N: ${{ inputs.top_n }}
         INPUT_FAIL_THRESHOLD: ${{ inputs.fail_threshold }}
         INPUT_FORCE_NOTIFY: ${{ inputs.force_notify }}
@@ -125,6 +130,7 @@ runs:
         [ -n "$INPUT_REPO" ] && args+=(--repo "$INPUT_REPO")
         [ -n "$INPUT_OUTPUT_DIR" ] && args+=(--output-dir "$INPUT_OUTPUT_DIR")
         [ -n "$INPUT_PAGES_URL" ] && args+=(--pages-url "$INPUT_PAGES_URL")
+        [ -n "$INPUT_SLACK_CHANNEL" ] && args+=(--slack-channel "$INPUT_SLACK_CHANNEL")
         [ -n "$INPUT_TOP_N" ] && args+=(--top-n "$INPUT_TOP_N")
         [ -n "$INPUT_FAIL_THRESHOLD" ] && args+=(--fail-threshold "$INPUT_FAIL_THRESHOLD")
         [ "$INPUT_FORCE_NOTIFY" = "true" ] && args+=(--force-notify)

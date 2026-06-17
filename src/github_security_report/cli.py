@@ -126,7 +126,8 @@ def _load_config(config_file: str | None, config_data: str | None, org: str | No
 # Modes
 # --------------------------------------------------------------------------- #
 async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
-                   pages_url: str | None, top_n: int, force_notify: bool) -> int:
+                   pages_url: str | None, top_n: int, force_notify: bool,
+                   slack_channel: str | None = None) -> int:
     now = dt.datetime.now(dt.timezone.utc)
     pairs: list[tuple[OrgConfig, OrgReport]] = []
     for org_cfg in cfg.organizations:
@@ -152,18 +153,25 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
         (output_dir / ".nojekyll").write_text("", encoding="utf-8")
         console.print(f"[green]Wrote reports to {output_dir}[/green]")
 
-    # Slack gating and channel are per organisation: an org notifies on its own
-    # report_day, to its own channel. Notifying orgs are grouped by channel so
-    # each distinct channel receives one digest covering its orgs.
-    by_channel: dict[str, list[OrgReport]] = {}
-    for org_cfg, org_report in pairs:
-        if not org_cfg.slack.report_day.should_notify(now=now.date(), force=force_notify):
-            continue
-        if not org_cfg.slack.channel:
-            continue
-        by_channel.setdefault(org_cfg.slack.channel, []).append(org_report)
+    # Slack: an org notifies on its own report_day (so should_notify reflects
+    # the schedule, independent of channel availability). The channel comes
+    # from the --slack-channel override (e.g. the SLACK_CHANNEL_ID variable)
+    # when given, otherwise the per-org config channel; notifying orgs are
+    # grouped by channel so each distinct channel gets one digest.
+    notifying = [
+        (org_cfg, org_report)
+        for org_cfg, org_report in pairs
+        if org_cfg.slack.report_day.should_notify(now=now.date(), force=force_notify)
+    ]
+    outputs = {"should_notify": "true" if notifying else "false", "failed": "false"}
 
-    outputs = {"should_notify": "true" if by_channel else "false", "failed": "false"}
+    by_channel: dict[str, list[OrgReport]] = {}
+    for org_cfg, org_report in notifying:
+        channel = slack_channel or org_cfg.slack.channel
+        if not channel:
+            continue
+        by_channel.setdefault(channel, []).append(org_report)
+
     payloads = [
         slack_render.render_payload(orgs, channel=channel, top_n=top_n, pages_url=pages_url)
         for channel, orgs in by_channel.items()
@@ -228,6 +236,7 @@ def report(
     token_env: str = typer.Option("GITHUB_TOKEN", "--token-env", help="Env var holding the repo-mode token."),
     output_dir: str = typer.Option(None, "--output-dir", "-o", help="Directory for Pages output (org mode)."),
     pages_url: str = typer.Option(None, "--pages-url", help="GitHub Pages URL for the Slack link."),
+    slack_channel: str = typer.Option(None, "--slack-channel", help="Slack channel ID; overrides config slack.channel (e.g. SLACK_CHANNEL_ID)."),
     top_n: int = typer.Option(10, "--top-n", help="Offenders shown per signal in Slack."),
     fail_threshold: str = typer.Option("none", "--fail-threshold", help="none|low|medium|high|critical|any (repo mode)."),
     force_notify: bool = typer.Option(False, "--force-notify", help="Post to Slack regardless of report_day."),
@@ -260,6 +269,7 @@ def report(
                 cfg, console=console,
                 output_dir=Path(output_dir) if output_dir else None,
                 pages_url=pages_url, top_n=top_n, force_notify=force_notify,
+                slack_channel=slack_channel or None,
             )
         )
     else:

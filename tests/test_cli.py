@@ -65,13 +65,27 @@ def test_org_mode_writes_pages(tmp_path: object) -> None:
 
     out = tmp_path / "site"
     result = cli.invoke(
-        app, ["report", "--org", "o", "--output-dir", str(out), "--no-color"]
+        app,
+        [
+            "report",
+            "--org",
+            "o",
+            "--output-dir",
+            str(out),
+            "--no-color",
+            "--force-notify",
+            "--slack-channel",
+            "CTEST123",
+        ],
     )
     assert result.exit_code == 0, result.stdout
     assert (out / "index.html").exists()
     assert (out / "o" / "report.html").exists()
     assert (out / "o" / "report.md").exists()
     assert (out / "o" / "report.json").exists()
+    # --slack-channel supplies the channel even though the config has none,
+    # so a payload is written for that channel.
+    assert (out / "slack-payload-CTEST123.json").exists()
 
 
 @respx.mock

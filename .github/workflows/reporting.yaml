@@ -71,6 +71,7 @@ jobs:
           token: "${{ secrets.SECURITY_REPORT_PAT }}"
           output_dir: "site"
           pages_url: "${{ env.PAGES_URL }}"
+          slack_channel: "${{ vars.SLACK_CHANNEL_ID }}"
           force_notify: "${{ inputs.force_notify || 'false' }}"
           use_local_source: "${{ inputs.use_local_source || 'false' }}"
 
@@ -82,14 +83,16 @@ jobs:
 
       - name: "Check Slack configuration"
         id: slack-config
-        if: steps.report.outputs.should_notify == 'true' && steps.report.outputs.slack_payload != ''
+        if: steps.report.outputs.should_notify == 'true'
         shell: bash
         env:
           SLACK_BOT_TOKEN: "${{ secrets.SLACK_BOT_TOKEN }}"
+          SLACK_CHANNEL_ID: "${{ vars.SLACK_CHANNEL_ID }}"
         run: |
-          # Gate the Slack step on credential availability so a missing token
-          # disables the integration gracefully rather than failing the job.
-          if [ -n "$SLACK_BOT_TOKEN" ]; then
+          # Slack needs both a bot token and a channel id. If either is
+          # missing, disable the integration gracefully rather than failing
+          # the job, warning in both the console and the step summary.
+          if [ -n "$SLACK_BOT_TOKEN" ] && [ -n "$SLACK_CHANNEL_ID" ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
@@ -99,7 +102,7 @@ jobs:
           fi
 
       - name: "Send Slack digest"
-        if: steps.slack-config.outputs.configured == 'true'
+        if: steps.slack-config.outputs.configured == 'true' && steps.report.outputs.slack_payload != ''
         # yamllint disable-line rule:line-length
         uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c  # v3.0.3
         with:
