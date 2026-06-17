@@ -31,8 +31,8 @@ class SignalType(str, Enum):
         return {
             SignalType.CODEQL: "CodeQL",
             SignalType.SCORECARD: "OpenSSF Scorecard",
-            SignalType.ZIZMOR: "zizmor",
-            SignalType.DEPENDABOT: "Dependabot alerts",
+            SignalType.ZIZMOR: "Zizmor Static Analysis",
+            SignalType.DEPENDABOT: "Dependabot Alerts",
             SignalType.SECRET_SCANNING: "Secret scanning",
         }[self]
 
