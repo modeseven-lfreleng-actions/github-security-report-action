@@ -51,12 +51,67 @@ tables (org mode):
 
 | Mode | Token | Scope | Output |
 | ---- | ----- | ----- | ------ |
-| `org` | classic PAT (`security_events`, `repo`, `read:org`) | one or more organisations | GitHub Pages + Slack + terminal |
+| `org` | fine-grained PAT (single org) or classic PAT (multiple orgs) | one or more organisations | GitHub Pages + Slack + terminal |
 | `repo` | `GITHUB_TOKEN` | the current repository only | job summary + outputs + optional PR gate |
 
 `scope: auto` resolves to org mode when configuration is supplied, otherwise
 repo mode for the detected repository. The ephemeral `GITHUB_TOKEN` cannot read
-org-wide security data, so org mode requires a PAT.
+org-wide security data, so org mode requires a PAT — see
+[Token permissions](#token-permissions) for the exact scopes.
+
+## Token permissions
+
+Repo mode needs nothing beyond the workflow's ephemeral `GITHUB_TOKEN`. Org mode
+needs a Personal Access Token; choose **one** of the two options below depending
+on how many organisations the report covers.
+
+All required access is **read-only**. The tool degrades any read it is not
+permitted to make to an "unknown" status rather than reporting a repository as
+clean, so an under-scoped token surfaces as unknowns in the report instead of
+silently wrong results — start minimal and widen if you see unknowns.
+
+### Single organisation — fine-grained PAT
+
+A fine-grained PAT is bound to one resource owner, so it works for a report
+covering a **single** organisation. Create it with **Resource owner** set to the
+organisation and **Repository access** set to *All repositories*, then grant:
+
+**Repository permissions** (all Read-only):
+
+| Permission | Used for |
+| ---------- | -------- |
+| Metadata | Mandatory baseline; listing organisation repositories |
+| Contents | `.github/dependabot.yml`, latest release, and tag dates |
+| Dependabot alerts | Open Dependabot vulnerability alerts |
+| Code scanning alerts | CodeQL / Scorecard / zizmor findings |
+| Secret scanning alerts | Open secret-scanning alerts |
+| Administration | Dependabot enablement + security-updates status, and effective branch rules |
+
+**Organization permissions** (Read-only):
+
+| Permission | Used for |
+| ---------- | -------- |
+| Administration | Organisation rulesets (detect tools enabled via a required workflow) |
+
+> A fine-grained token cannot span organisations. For a report covering more
+> than one org, use a classic PAT (below).
+
+### Multiple organisations — classic PAT
+
+A classic PAT is authorised across every organisation its creator can access
+(subject to SSO authorisation), so a single token can report on **multiple**
+organisations. Grant these scopes:
+
+| Scope | Used for |
+| ----- | -------- |
+| `repo` | Repository data, including private repositories |
+| `security_events` | Code scanning, secret scanning, and Dependabot alerts (org-bulk and per-repo) |
+| `read:org` | Listing organisation repositories and reading organisation rulesets |
+
+> For organisations that enforce SSO, the PAT must be **SSO-authorised** for
+> each target organisation, or the org-level endpoints return `403` (reported as
+> unknown). Store the token as a secret (e.g. `SECURITY_REPORT_PAT`) and
+> reference it by env-var name via `token_env`; never embed it in the config.
 
 ## Usage
 

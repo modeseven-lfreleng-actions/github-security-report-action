@@ -272,11 +272,14 @@ Sketch:
 
 ## 9. Credentials and operating modes
 
-- **Org-wide security data requires a classic PAT** (`security_events`, `repo`,
-  `read:org`). The ephemeral `GITHUB_TOKEN` is **repo-scoped** and is 403/404'd
-  on org-level security endpoints; fine-grained tokens can't span orgs. The
-  token is therefore **always a PAT secret** referenced by `token_env` for org
-  mode.
+- **Org-wide security data requires a PAT.** The ephemeral `GITHUB_TOKEN` is
+  **repo-scoped** and is 403/404'd on org-level security endpoints. A
+  **fine-grained** PAT (read-only: metadata, contents, dependabot/code/secret
+  scanning alerts, repo + org administration) covers a **single** organisation;
+  a **classic** PAT (`security_events`, `repo`, `read:org`) is needed to span
+  **multiple** orgs (fine-grained tokens are bound to one owner). See the README
+  "Token permissions" section. The token is **always a PAT secret** referenced
+  by `token_env` for org mode.
 - **`scope` input: `auto | org | repo`.**
   - **Org mode** — PAT + config; org-bulk endpoints; multi-org; Pages + Slack.
   - **Repo mode** — degraded, self-contained: uses the ephemeral
