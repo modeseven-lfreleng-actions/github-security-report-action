@@ -72,6 +72,28 @@ class TestOrgHtml:
             "&lt;x&gt;", ""
         )  # only the escaped form appears
 
+    def test_renders_dependabot_subtables_and_releases(self) -> None:
+        org = _org("o", [], count=2)
+        org.dependabot_tables = [
+            report.TableSection(
+                title="Enablement",
+                columns=("Repository", "Dependabot alerts"),
+                rows=[report.TableRow(repo=_repo("off"), cells=("❌ not enabled",))],
+            )
+        ]
+        org.releases = report.TableSection(
+            title="Releases / Tagging",
+            columns=("Repository", "Last release", "Last tag"),
+            rows=[report.TableRow(repo=_repo("stale"), cells=("never", "never"))],
+            note="Ranked by combined staleness.",
+        )
+        out = html.render_org_html(org)
+        assert "<h3>Enablement</h3>" in out
+        assert '<a href="https://github.com/o/off">off</a>' in out
+        assert "<h2>Releases / Tagging</h2>" in out
+        assert '<a href="https://github.com/o/stale">stale</a>' in out
+        assert "Ranked by combined staleness." in out
+
 
 class TestIndexHtml:
     def test_card_per_org(self) -> None:

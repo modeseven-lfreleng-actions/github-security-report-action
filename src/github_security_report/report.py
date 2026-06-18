@@ -48,6 +48,32 @@ class SignalSection:
 
 
 @dataclass
+class TableRow:
+    """A generic, repository-keyed table row with pre-formatted cells.
+
+    Used by the Dependabot posture and Releases/Tagging tables, which do not fit
+    the four-state :class:`SignalSection` model. ``cells`` excludes the leading
+    repository link cell (each renderer supplies that from ``repo``).
+    """
+
+    repo: Repo
+    cells: tuple[str, ...]
+
+
+@dataclass
+class TableSection:
+    """A generic titled table rendered as a sub-section under a heading."""
+
+    title: str
+    columns: tuple[str, ...]  # includes the leading "Repository" column
+    rows: list[TableRow] = field(default_factory=list)
+    # Shown in place of the table when there are no rows (a clean state).
+    empty_note: str = ""
+    # Optional explanatory footnote rendered beneath the table.
+    note: str = ""
+
+
+@dataclass
 class OrgReport:
     org: str
     sections: list[SignalSection]
@@ -56,6 +82,13 @@ class OrgReport:
     # True when the repository listing was incomplete (e.g. a truncated or
     # forbidden org repos read), so the report may omit repositories.
     partial: bool = False
+    # Extra Dependabot posture tables rendered as sub-sections beneath the
+    # "Dependabot" heading, after the open-alert table (enablement, cooldown,
+    # feature configuration). Empty in repo mode / when not collected.
+    dependabot_tables: list[TableSection] = field(default_factory=list)
+    # The Releases / Tagging table (release and tag staleness), or None when
+    # not collected (repo mode) or no repositories qualify.
+    releases: TableSection | None = None
 
 
 @dataclass

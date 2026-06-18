@@ -110,3 +110,45 @@ class TestOrgAndReport:
         )
         out = markdown.render_report(r)
         assert out.count("# Security report: lfreleng-actions") == 2
+
+
+class TestExtraTables:
+    def _table(self) -> report.TableSection:
+        return report.TableSection(
+            title="Update Cooldown",
+            columns=("Repository", "Ecosystems without cooldown"),
+            rows=[report.TableRow(repo=_repo("a"), cells=("pip, npm",))],
+            note="A cooldown is mandatory.",
+        )
+
+    def test_render_table_section_renders_rows_and_note(self) -> None:
+        out = markdown.render_table_section(self._table(), level=3)
+        assert out.startswith("### Update Cooldown")
+        assert "| Repository | Ecosystems without cooldown |" in out
+        assert "| [a](https://github.com/o/a) | pip, npm |" in out
+        assert "_A cooldown is mandatory._" in out
+
+    def test_render_table_section_empty_note(self) -> None:
+        empty = report.TableSection(
+            title="Enablement",
+            columns=("Repository", "Dependabot alerts"),
+            rows=[],
+            empty_note="All enabled.",
+        )
+        out = markdown.render_table_section(empty, level=3)
+        assert "✅ All enabled." in out
+
+    def test_org_nests_dependabot_tables_and_releases(self) -> None:
+        org = _org([], count=2)
+        org.dependabot_tables = [self._table()]
+        org.releases = report.TableSection(
+            title="Releases / Tagging",
+            columns=("Repository", "Last release", "Last tag"),
+            rows=[report.TableRow(repo=_repo("z"), cells=("never", "never"))],
+        )
+        out = markdown.render_org(org)
+        # Dependabot sub-table nested under (after) the Dependabot Alerts heading.
+        assert out.index("## Dependabot Alerts") < out.index("### Update Cooldown")
+        # Releases section rendered at the top level after all signals.
+        assert "## Releases / Tagging" in out
+        assert "| [z](https://github.com/o/z) | never | never |" in out

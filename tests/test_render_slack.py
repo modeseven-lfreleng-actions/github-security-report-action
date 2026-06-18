@@ -93,3 +93,40 @@ def test_multi_org_payload() -> None:
     payload = slack.render_payload([_org([]), _org([])], channel="C1")
     headers = [b for b in payload["blocks"] if b["type"] == "header"]
     assert len(headers) == 2
+
+
+def test_dependabot_and_releases_tables_rendered() -> None:
+    org = _org([], count=2)
+    org.dependabot_tables = [
+        report.TableSection(
+            title="Feature Configuration",
+            columns=("Repository", "Dependabot alerts", "Security updates", "Disabled"),
+            rows=[report.TableRow(repo=_repo("bad"), cells=("❌", "❌", "2"))],
+        )
+    ]
+    org.releases = report.TableSection(
+        title="Releases / Tagging",
+        columns=("Repository", "Last release", "Last tag"),
+        rows=[report.TableRow(repo=_repo("stale"), cells=("never", "never"))],
+    )
+    blocks = slack.render_org_blocks(org, top_n=10, pages_url=None)
+    texts = [b.get("text", {}).get("text", "") for b in blocks]
+    feature = next(t for t in texts if "Feature Configuration" in t)
+    # Emoji glyphs are folded to ascii so the monospace columns stay aligned.
+    assert "❌" not in feature
+    assert "bad" in feature and "```" in feature
+    assert any("Releases / Tagging" in t and "stale" in t for t in texts)
+
+
+def test_empty_extra_tables_are_skipped() -> None:
+    org = _org([], count=1)
+    org.dependabot_tables = [
+        report.TableSection(title="Enablement", columns=("Repository", "x"), rows=[])
+    ]
+    org.releases = report.TableSection(
+        title="Releases / Tagging", columns=("Repository",), rows=[]
+    )
+    blocks = slack.render_org_blocks(org, top_n=10, pages_url=None)
+    texts = [b.get("text", {}).get("text", "") for b in blocks]
+    assert not any("Enablement" in t for t in texts)
+    assert not any("Releases / Tagging" in t for t in texts)

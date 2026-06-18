@@ -11,7 +11,12 @@ report model. See ``docs/BRIEF.md`` sections 4-6, 11.
 from __future__ import annotations
 
 from github_security_report.models import Repo, RepoSignal, SignalType
-from github_security_report.report import OrgReport, Report, SignalSection
+from github_security_report.report import (
+    OrgReport,
+    Report,
+    SignalSection,
+    TableSection,
+)
 
 
 def _link(repo: Repo) -> str:
@@ -87,6 +92,27 @@ def render_section(section: SignalSection) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_table_section(section: TableSection, *, level: int = 3) -> str:
+    """Render a generic posture/freshness table at the given heading level."""
+    heading = "#" * level
+    lines = [f"{heading} {section.title}", ""]
+    if section.rows:
+        aligns = ["---"] * len(section.columns)
+        lines.append("| " + " | ".join(section.columns) + " |")
+        lines.append("| " + " | ".join(aligns) + " |")
+        for row in section.rows:
+            cells = [_link(row.repo), *row.cells]
+            lines.append("| " + " | ".join(cells) + " |")
+        lines.append("")
+    elif section.empty_note:
+        lines.append(f"✅ {section.empty_note}")
+        lines.append("")
+    if section.note:
+        lines.append(f"_{section.note}_")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_org(org: OrgReport) -> str:
     when = org.generated_at.strftime("%Y-%m-%d %H:%M UTC")
     parts = [
@@ -101,7 +127,17 @@ def render_org(org: OrgReport) -> str:
             "read, so some repositories may be missing from this report."
         )
         parts.append("")
-    parts.extend(render_section(section) for section in org.sections)
+    for section in org.sections:
+        parts.append(render_section(section))
+        # The Dependabot configuration-posture sub-tables (enablement, cooldown,
+        # feature matrix) nest beneath the Dependabot Alerts heading.
+        if section.signal is SignalType.DEPENDABOT:
+            parts.extend(
+                render_table_section(table, level=3)
+                for table in org.dependabot_tables
+            )
+    if org.releases is not None:
+        parts.append(render_table_section(org.releases, level=2))
     return "\n".join(parts).rstrip() + "\n"
 
 

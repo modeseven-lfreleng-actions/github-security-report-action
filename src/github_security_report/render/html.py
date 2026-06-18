@@ -13,9 +13,9 @@ import re
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
-from github_security_report.models import RepoSignal
+from github_security_report.models import RepoSignal, SignalType
 from github_security_report.render import markdown
-from github_security_report.report import OrgReport, SignalSection
+from github_security_report.report import OrgReport, SignalSection, TableSection
 
 # Pinned, not @latest (a security tool must not load a floating CDN asset).
 DATATABLES_VERSION = "9.0.3"
@@ -54,6 +54,20 @@ def _row_cells(sig: RepoSignal) -> list[str]:
     return markdown.row_cells(sig)[1:]
 
 
+def _table_context(section: TableSection) -> dict:
+    """Context for a generic posture/freshness table (Dependabot, releases)."""
+    return {
+        "title": section.title,
+        "columns": list(section.columns),
+        "rows": [
+            {"name": row.repo.name, "url": row.repo.html_url, "cells": list(row.cells)}
+            for row in section.rows
+        ],
+        "empty_note": section.empty_note,
+        "note": section.note,
+    }
+
+
 def _section_context(section: SignalSection) -> dict:
     return {
         "title": section.signal.heading,
@@ -70,13 +84,24 @@ def _section_context(section: SignalSection) -> dict:
 
 def render_org_html(org: OrgReport) -> str:
     template = _env.get_template("report.html.j2")
+    sections: list[dict] = []
+    for section in org.sections:
+        ctx = _section_context(section)
+        # The Dependabot posture sub-tables render beneath the Dependabot
+        # Alerts section, inside the same card.
+        if section.signal is SignalType.DEPENDABOT:
+            ctx["extra_tables"] = [
+                _table_context(t) for t in org.dependabot_tables
+            ]
+        sections.append(ctx)
     return str(
         template.render(
             org=org.org,
             repo_count=org.repo_count,
             generated_at=org.generated_at.strftime("%Y-%m-%d %H:%M UTC"),
             partial=org.partial,
-            sections=[_section_context(s) for s in org.sections],
+            sections=sections,
+            releases=_table_context(org.releases) if org.releases else None,
             datatables_version=DATATABLES_VERSION,
             datatables_css_sri=DATATABLES_CSS_SRI,
             datatables_js_sri=DATATABLES_JS_SRI,

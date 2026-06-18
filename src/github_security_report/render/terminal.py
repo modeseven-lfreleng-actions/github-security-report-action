@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from github_security_report.models import RepoSignal, SignalType
-from github_security_report.report import OrgReport, SignalSection
+from github_security_report.report import OrgReport, SignalSection, TableSection
 
 _SEVERITY_STYLE = {"critical": "bold red", "high": "red", "medium": "yellow", "low": "dim"}
 
@@ -67,6 +67,24 @@ def render_section(section: SignalSection, console: Console) -> None:
     console.print()
 
 
+def render_table_section(section: TableSection, console: Console) -> None:
+    """Render a generic posture/freshness table to the terminal."""
+    if section.rows:
+        table = Table(title=section.title, title_justify="left", title_style="bold")
+        for i, col in enumerate(section.columns):
+            table.add_column(col, overflow="fold", justify="left" if i == 0 else "right")
+        for row in section.rows:
+            table.add_row(row.repo.name, *row.cells)
+        console.print(table)
+    else:
+        console.print(f"[bold]{section.title}[/bold]")
+        if section.empty_note:
+            console.print(f"  [green]✓ {section.empty_note}[/green]")
+    if section.note:
+        console.print(f"  [dim]{section.note}[/dim]")
+    console.print()
+
+
 def render_org(org: OrgReport, console: Console) -> None:
     console.rule(f"[bold]Security report: {org.org}[/bold]")
     console.print(f"[dim]{org.repo_count} repositories analysed[/dim]\n")
@@ -77,6 +95,11 @@ def render_org(org: OrgReport, console: Console) -> None:
         )
     for section in org.sections:
         render_section(section, console)
+        if section.signal is SignalType.DEPENDABOT:
+            for table in org.dependabot_tables:
+                render_table_section(table, console)
+    if org.releases is not None:
+        render_table_section(org.releases, console)
 
 
 def render_orgs(orgs: list[OrgReport], console: Console) -> None:

@@ -98,6 +98,18 @@ class FakeClient:
             return 200, self.scores[repo]
         return 404, None
 
+    async def automated_security_fixes(self, org: str, repo: str) -> bool | None:
+        return True
+
+    async def dependabot_config(self, org: str, repo: str) -> tuple[int, str]:
+        return 404, ""  # no Dependabot configuration by default
+
+    async def latest_release_at(self, org: str, repo: str) -> dt.datetime | None:
+        return None
+
+    async def latest_tag_at(self, org: str, repo: str) -> dt.datetime | None:
+        return None
+
 
 def _sections(org_report: object) -> dict[SignalType, object]:
     return {s.signal: s for s in org_report.sections}
@@ -277,3 +289,100 @@ async def test_collect_repo_honours_custom_ruleset_workflows() -> None:
     assert repo is not None
     by_signal = {s.signal: s for s in signals}
     assert by_signal[SignalType.ZIZMOR].state is RepoState.NAG
+
+
+class PostureClient(FakeClient):
+    """A fake whose Dependabot posture and release/tag probes vary by repo."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        # git-configure-action has Dependabot alerts disabled; the others on.
+        self._alerts = {"dependamerge": True, "git-configure-action": False}
+        self._security_updates = {"dependamerge": True, "git-configure-action": False}
+        self._configs = {
+            "dependamerge": (
+                200,
+                "version: 2\nupdates:\n  - package-ecosystem: pip\n",
+            ),
+        }
+
+    async def dependabot_enabled(self, org: str, repo: str) -> bool | None:
+        return self._alerts.get(repo, True)
+
+    async def automated_security_fixes(self, org: str, repo: str) -> bool | None:
+        return self._security_updates.get(repo, True)
+
+    async def dependabot_config(self, org: str, repo: str) -> tuple[int, str]:
+        return self._configs.get(repo, (404, ""))
+
+    async def latest_release_at(self, org: str, repo: str) -> dt.datetime | None:
+        return WHEN - dt.timedelta(days=100)
+
+    async def latest_tag_at(self, org: str, repo: str) -> dt.datetime | None:
+        return None
+
+
+async def test_collect_org_attaches_dependabot_tables_and_releases() -> None:
+    # Mark the repos old enough to qualify for the Releases/Tagging table.
+    class AgedPostureClient(PostureClient):
+        def __init__(self) -> None:
+            super().__init__()
+            old = WHEN - dt.timedelta(days=400)
+            self.repos = [
+                _repo("dependamerge"),
+                _repo("git-configure-action"),
+            ]
+            self.repos = [
+                Repo(r.name, r.full_name, r.html_url, created_at=old)
+                for r in self.repos
+            ]
+
+    report = await collect.collect_org(
+        AgedPostureClient(), OrgConfig(name="o"), ReportConfig(), generated_at=WHEN
+    )
+    titles = [t.title for t in report.dependabot_tables]
+    assert titles == ["Enablement", "Update Cooldown", "Feature Configuration"]
+
+    enablement = report.dependabot_tables[0]
+    assert [r.repo.name for r in enablement.rows] == ["git-configure-action"]
+
+    cooldown = report.dependabot_tables[1]
+    assert [r.repo.name for r in cooldown.rows] == ["dependamerge"]  # pip, no cooldown
+
+    # The Dependabot signal nag is moved into the Enablement sub-table.
+    dependabot = _sections(report)[SignalType.DEPENDABOT]
+    assert dependabot.nag_repos == []
+
+    assert report.releases is not None
+    # Both repos qualify (old, no tag, stale release) and appear.
+    assert {r.repo.name for r in report.releases.rows} == {
+        "dependamerge",
+        "git-configure-action",
+    }
+
+
+async def test_collect_org_releases_exclude_and_min_age() -> None:
+    class AgedPostureClient(PostureClient):
+        def __init__(self) -> None:
+            super().__init__()
+            old = WHEN - dt.timedelta(days=400)
+            young = WHEN - dt.timedelta(days=5)
+            self.repos = [
+                Repo("dependamerge", "o/dependamerge", "u", created_at=old),
+                Repo(
+                    "git-configure-action",
+                    "o/git-configure-action",
+                    "u",
+                    created_at=young,
+                ),
+            ]
+
+    report = await collect.collect_org(
+        AgedPostureClient(),
+        OrgConfig(name="o", releases_exclude=("dependamerge",)),
+        ReportConfig(release_min_age_days=28),
+        generated_at=WHEN,
+    )
+    assert report.releases is not None
+    # dependamerge is name-excluded; git-configure-action is too young -> empty.
+    assert report.releases.rows == []

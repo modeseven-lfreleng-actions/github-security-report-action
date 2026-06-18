@@ -11,6 +11,7 @@ ascending).
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -72,6 +73,9 @@ class Repo:
     is_template: bool = False
     private: bool = False
     default_branch: str = "main"
+    # Repository creation time (UTC); used to exclude freshly-created repos from
+    # the release/tag age requirement. None when the API did not provide it.
+    created_at: dt.datetime | None = None
 
 
 @dataclass

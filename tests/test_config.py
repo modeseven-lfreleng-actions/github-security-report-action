@@ -83,6 +83,35 @@ class TestBuildConfig:
         assert org.report.top_n == 20
         assert org.exclude == ("x",)
 
+    def test_release_min_age_days_default_and_override(self) -> None:
+        assert config.build_config(MINIMAL).report.release_min_age_days == 28
+        data = {
+            "report": {"release_min_age_days": 0},
+            "organizations": [
+                {"name": "o", "report": {"release_min_age_days": 14}},
+            ],
+        }
+        org = config.build_config(data).organizations[0]
+        assert org.report.release_min_age_days == 14
+
+    def test_releases_exclude_parsed(self) -> None:
+        data = {
+            "organizations": [
+                {"name": "o", "releases_exclude": ["internal-a", "internal-b"]},
+            ],
+        }
+        org = config.build_config(data).organizations[0]
+        assert org.releases_exclude == ("internal-a", "internal-b")
+
+    def test_rejects_negative_release_min_age_days(self) -> None:
+        with pytest.raises(ConfigError):
+            config.build_config(
+                {
+                    "report": {"release_min_age_days": -1},
+                    "organizations": [{"name": "o"}],
+                }
+            )
+
     def test_literal_token_warns(self, caplog: pytest.LogCaptureFixture) -> None:
         data = {"organizations": [{"name": "o", "token_env": "ghp_secretvalue"}]}
         config.build_config(data)

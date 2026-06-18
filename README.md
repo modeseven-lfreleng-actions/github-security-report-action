@@ -36,6 +36,17 @@ back to code-scanning findings. See [`docs/BRIEF.md`](docs/BRIEF.md) and
 [`docs/phase0-findings.md`](docs/phase0-findings.md) for the full design and the
 API research it is built on.
 
+Two further sections report **configuration posture** and **freshness** as plain
+tables (org mode):
+
+- **Dependabot** — repositories without Dependabot enabled, ecosystems with no
+  update `cooldown` configured (mandatory; any value passes), and a scored
+  matrix of disabled Dependabot features (worst first).
+- **Releases / Tagging** — repositories overdue a release or tag, ranked by a
+  hidden compound staleness score. Repositories younger than
+  `release_min_age_days` (default 28; `0` includes all) and those in
+  `releases_exclude` are omitted.
+
 ## Operating modes
 
 | Mode | Token | Scope | Output |
@@ -90,12 +101,18 @@ environment-variable name, never embedded.
 ```json
 {
   "slack": { "channel": "releng-scm", "report_day": "tuesday" },
-  "report": { "top_n": 10, "include_archived": false, "include_test": false },
+  "report": {
+    "top_n": 10,
+    "include_archived": false,
+    "include_test": false,
+    "release_min_age_days": 28
+  },
   "organizations": [
     {
       "name": "lfreleng-actions",
       "token_env": "GITHUB_TOKEN",
-      "exclude": ["actions-template"]
+      "exclude": ["actions-template"],
+      "releases_exclude": ["internal-only-repo"]
     }
   ]
 }
@@ -103,6 +120,10 @@ environment-variable name, never embedded.
 
 `report_day` accepts a single weekday, a list of weekdays, `"never"`, or
 `"always"`.
+
+`report.release_min_age_days` (default `28`, `0` = include all) and the per-org
+`releases_exclude` tune the Releases / Tagging section; they can be overridden
+locally with `--release-min-age-days` and the repeatable `--releases-exclude`.
 
 `slack.channel` is optional. The action's `slack_channel` input (wired to the
 `SLACK_CHANNEL_ID` variable in `reporting.yaml`) overrides it, so the channel

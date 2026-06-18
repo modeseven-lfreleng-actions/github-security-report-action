@@ -17,14 +17,15 @@ import logging
 from collections import defaultdict
 from typing import Protocol
 
-from github_security_report import rulesets, scope
+from github_security_report import posture, rulesets, scope
 from github_security_report.classify import RepoFacts, classify_repo
 from github_security_report.config import (
     DEFAULT_RULESET_WORKFLOWS,
     OrgConfig,
     ReportConfig,
 )
-from github_security_report.models import Repo, RepoSignal
+from github_security_report.models import Repo, RepoSignal, SignalType
+from github_security_report.posture import RepoPosture
 from github_security_report.report import OrgReport, build_org_report
 
 log = logging.getLogger(__name__)
@@ -45,6 +46,10 @@ class ClientProtocol(Protocol):
     async def secret_scanning_status(self, org: str, repo: str) -> int: ...
     async def dependabot_enabled(self, org: str, repo: str) -> bool | None: ...
     async def scorecard_score(self, org: str, repo: str) -> tuple[int, float | None]: ...
+    async def automated_security_fixes(self, org: str, repo: str) -> bool | None: ...
+    async def dependabot_config(self, org: str, repo: str) -> tuple[int, str]: ...
+    async def latest_release_at(self, org: str, repo: str) -> dt.datetime | None: ...
+    async def latest_tag_at(self, org: str, repo: str) -> dt.datetime | None: ...
 
 
 class RepoClientProtocol(Protocol):
@@ -99,6 +104,43 @@ async def _facts_for_repo(
         scorecard_status=scorecard_status,
         scorecard_score=score,
         ruleset_signals=ruleset_signals,
+    )
+
+
+async def _posture_for_repo(
+    client: ClientProtocol,
+    org: str,
+    repo: Repo,
+    *,
+    dependabot_alerts: bool | None,
+    skip_release_probes: bool,
+) -> RepoPosture:
+    """Probe one repo's Dependabot posture and release/tag freshness.
+
+    ``dependabot_alerts`` is reused from the signal sweep (the GraphQL
+    ``hasVulnerabilityAlertsEnabled`` read) rather than re-fetched. Release and
+    tag probes are skipped for repositories excluded from the Releases/Tagging
+    table (young or opted out), which then carry no release/tag timestamps.
+    """
+    security_updates = await client.automated_security_fixes(org, repo.name)
+    cfg_status, cfg_text = await client.dependabot_config(org, repo.name)
+    has_config = cfg_status == 200
+    cooldown_missing = (
+        posture.cooldown_missing_ecosystems(cfg_text) if has_config else ()
+    )
+    latest_release_at: dt.datetime | None = None
+    latest_tag_at: dt.datetime | None = None
+    if not skip_release_probes:
+        latest_release_at = await client.latest_release_at(org, repo.name)
+        latest_tag_at = await client.latest_tag_at(org, repo.name)
+    return RepoPosture(
+        repo=repo,
+        dependabot_alerts=dependabot_alerts,
+        security_updates=security_updates,
+        cooldown_missing=cooldown_missing,
+        has_dependabot_config=has_config,
+        latest_release_at=latest_release_at,
+        latest_tag_at=latest_tag_at,
     )
 
 
@@ -196,13 +238,60 @@ async def collect_org(
         )
 
     signals = [sig for repo_facts in facts for sig in classify_repo(repo_facts)]
-    return build_org_report(
+    report = build_org_report(
         org,
         signals,
         repo_count=len(in_scope),
         generated_at=generated_at,
         partial=repos_status != 200,
     )
+
+    # Extra reporting categories (outside the four-state model): Dependabot
+    # configuration posture and release/tag freshness. The Dependabot alerts
+    # enablement flag is reused from the per-repo facts rather than re-probed;
+    # release/tag probes are skipped for repositories the Releases/Tagging table
+    # would exclude anyway (young or opted out), saving two HTTP calls each.
+    when = report.generated_at
+    dependabot_on = {f.repo.name: f.dependabot_enabled for f in facts}
+    postures: list[RepoPosture] = []
+    for start in range(0, len(in_scope), _REPO_BATCH):
+        batch = in_scope[start : start + _REPO_BATCH]
+        postures.extend(
+            await asyncio.gather(
+                *(
+                    _posture_for_repo(
+                        client, org, repo,
+                        dependabot_alerts=dependabot_on.get(repo.name),
+                        skip_release_probes=posture.is_release_excluded(
+                            repo,
+                            generated_at=when,
+                            min_age_days=report_cfg.release_min_age_days,
+                            exclude=org_cfg.releases_exclude,
+                        ),
+                    )
+                    for repo in batch
+                )
+            )
+        )
+
+    not_enabled = sorted(
+        (f.repo for f in facts if f.dependabot_enabled is False),
+        key=lambda r: r.name,
+    )
+    report.dependabot_tables = posture.build_dependabot_tables(not_enabled, postures)
+    report.releases = posture.build_releases_table(
+        postures,
+        generated_at=when,
+        min_age_days=report_cfg.release_min_age_days,
+        exclude=org_cfg.releases_exclude,
+    )
+    # The Enablement sub-table now carries the not-enabled repositories, so drop
+    # them from the Dependabot signal section's nag list to avoid listing the
+    # same repositories twice under the one heading.
+    for section in report.sections:
+        if section.signal is SignalType.DEPENDABOT:
+            section.nag_repos = []
+    return report
 
 
 async def collect_repo(

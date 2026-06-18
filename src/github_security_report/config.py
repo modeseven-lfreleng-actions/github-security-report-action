@@ -66,6 +66,7 @@ CONFIG_SCHEMA: dict = {
                 "top_n": {"type": "integer", "minimum": 1},
                 "include_archived": {"type": "boolean"},
                 "include_test": {"type": "boolean"},
+                "release_min_age_days": {"type": "integer", "minimum": 0},
                 "ruleset_workflows": {
                     "type": "object",
                     "additionalProperties": {"type": "string"},
@@ -83,6 +84,10 @@ CONFIG_SCHEMA: dict = {
                     "name": {"type": "string", "minLength": 1},
                     "token_env": {"type": "string"},
                     "exclude": {"type": "array", "items": {"type": "string"}},
+                    "releases_exclude": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
                     "slack": {"$ref": "#/properties/slack"},
                     "report": {"$ref": "#/properties/report"},
                 },
@@ -129,6 +134,9 @@ class ReportConfig:
     top_n: int = 10
     include_archived: bool = False
     include_test: bool = False
+    # Repositories created within this many days are excluded from the
+    # Releases/Tagging requirement (0 = include all repositories).
+    release_min_age_days: int = 28
     ruleset_workflows: dict[str, str] = field(
         default_factory=lambda: dict(DEFAULT_RULESET_WORKFLOWS)
     )
@@ -139,6 +147,9 @@ class OrgConfig:
     name: str
     token_env: str = "GITHUB_TOKEN"
     exclude: tuple[str, ...] = ()
+    # Repositories excluded from the Releases/Tagging table only (e.g. repos
+    # that are never released/consumed externally).
+    releases_exclude: tuple[str, ...] = ()
     slack: SlackConfig = field(default_factory=SlackConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
 
@@ -190,7 +201,16 @@ def _slack_from(data: dict, base: SlackConfig) -> SlackConfig:
 def _report_from(data: dict, base: ReportConfig) -> ReportConfig:
     result = replace(
         base,
-        **{k: v for k, v in data.items() if k in {"top_n", "include_archived", "include_test"}},
+        **{
+            k: v
+            for k, v in data.items()
+            if k in {
+                "top_n",
+                "include_archived",
+                "include_test",
+                "release_min_age_days",
+            }
+        },
     )
     if "ruleset_workflows" in data:
         # Merge so the built-in defaults (e.g. zizmor) survive unless overridden.
@@ -223,6 +243,7 @@ def build_config(data: dict) -> Config:
                 name=raw["name"],
                 token_env=token_env,
                 exclude=tuple(raw.get("exclude", ())),
+                releases_exclude=tuple(raw.get("releases_exclude", ())),
                 slack=_slack_from(raw.get("slack", {}), global_slack),
                 report=_report_from(raw.get("report", {}), global_report),
             )

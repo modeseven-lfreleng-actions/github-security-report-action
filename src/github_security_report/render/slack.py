@@ -11,7 +11,7 @@ Produces a ``chat.postMessage`` payload. See ``docs/BRIEF.md`` section 11.
 from __future__ import annotations
 
 from github_security_report.models import RepoSignal, SignalType
-from github_security_report.report import OrgReport, SignalSection
+from github_security_report.report import OrgReport, SignalSection, TableSection
 
 # Slack rejects a chat.postMessage with more than 50 blocks, so a digest
 # spanning many orgs must be capped or the whole message fails to deliver.
@@ -66,6 +66,39 @@ def _summary(section: SignalSection) -> str:
     return ", ".join(bits) or "no data"
 
 
+def _fixed_table_generic(columns: tuple[str, ...], rows: list[list[str]]) -> str:
+    """Fixed-width text table for a generic posture/freshness table."""
+    widths = [len(c) for c in columns]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+
+    def fmt(row: list[str]) -> str:
+        return "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row))
+
+    lines = [fmt(list(columns))] + [fmt(row) for row in rows]
+    return "\n".join(lines)
+
+
+def _table_block(section: TableSection, top_n: int) -> dict | None:
+    """A Slack section block for a posture/freshness table (None when empty).
+
+    Emoji cell glyphs are dropped from the fixed-width rendering so columns stay
+    aligned in Slack's monospace block; only the worst ``top_n`` rows are shown.
+    """
+    if not section.rows:
+        return None
+    rows = [
+        [row.repo.name, *(cell.replace("✅", "y").replace("❌", "n").replace("❓", "?") for cell in row.cells)]
+        for row in section.rows[:top_n]
+    ]
+    table = _fixed_table_generic(section.columns, rows)
+    return {
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": f"*{section.title}*\n```\n{table}\n```"},
+    }
+
+
 def render_org_blocks(org: OrgReport, *, top_n: int, pages_url: str | None) -> list[dict]:
     """Slack blocks for one organisation."""
     blocks: list[dict] = [
@@ -94,6 +127,16 @@ def render_org_blocks(org: OrgReport, *, top_n: int, pages_url: str | None) -> l
             table = _fixed_table(section, top_n)
             text += f"\n```\n{table}\n```"
         blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
+        # Dependabot posture sub-tables follow the Dependabot Alerts block.
+        if section.signal is SignalType.DEPENDABOT:
+            for table_section in org.dependabot_tables:
+                block = _table_block(table_section, top_n)
+                if block is not None:
+                    blocks.append(block)
+    if org.releases is not None:
+        block = _table_block(org.releases, top_n)
+        if block is not None:
+            blocks.append(block)
     if pages_url:
         blocks.append(
             {

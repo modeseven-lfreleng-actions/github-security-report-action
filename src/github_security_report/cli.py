@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import typer
@@ -30,7 +31,7 @@ from github_security_report.render import html as html_render
 from github_security_report.render import markdown as md_render
 from github_security_report.render import slack as slack_render
 from github_security_report.render import terminal as term_render
-from github_security_report.report import OrgReport, Report, build_org_report
+from github_security_report.report import OrgReport, Report, TableSection, build_org_report
 
 app = typer.Typer(
     name="github-security-report",
@@ -64,6 +65,24 @@ def main(
 # --------------------------------------------------------------------------- #
 # JSON serialisation
 # --------------------------------------------------------------------------- #
+def _table_to_dict(section: TableSection) -> dict:
+    """Serialise a generic posture/freshness table for JSON consumers."""
+    return {
+        "title": section.title,
+        "columns": list(section.columns),
+        "rows": [
+            {
+                "repo": row.repo.full_name,
+                "url": row.repo.html_url,
+                "cells": list(row.cells),
+            }
+            for row in section.rows
+        ],
+        "empty_note": section.empty_note,
+        "note": section.note,
+    }
+
+
 def _org_to_dict(org: OrgReport) -> dict:
     return {
         "org": org.org,
@@ -96,6 +115,9 @@ def _org_to_dict(org: OrgReport) -> dict:
             }
             for s in org.sections
         ],
+        # Extra reporting categories outside the four-state per-signal model.
+        "dependabot_tables": [_table_to_dict(t) for t in org.dependabot_tables],
+        "releases": _table_to_dict(org.releases) if org.releases else None,
     }
 
 
@@ -149,7 +171,9 @@ def _load_config(
 # --------------------------------------------------------------------------- #
 async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
                    pages_url: str | None, top_n: int | None, force_notify: bool,
-                   slack_channel: str | None = None) -> int:
+                   slack_channel: str | None = None,
+                   release_min_age_days: int | None = None,
+                   releases_exclude: tuple[str, ...] | None = None) -> int:
     now = dt.datetime.now(dt.timezone.utc)
     pairs: list[tuple[OrgConfig, OrgReport]] = []
     for org_cfg in cfg.organizations:
@@ -157,9 +181,16 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
         if not token:
             console.print(f"[red]No token in ${org_cfg.token_env} for {org_cfg.name}[/red]")
             return 2
+        # CLI overrides win over config for the Releases/Tagging controls.
+        report_cfg = org_cfg.report
+        if release_min_age_days is not None:
+            report_cfg = replace(report_cfg, release_min_age_days=release_min_age_days)
+        effective_cfg = org_cfg
+        if releases_exclude is not None:
+            effective_cfg = replace(org_cfg, releases_exclude=releases_exclude)
         async with GitHubClient(token) as client:
             pairs.append(
-                (org_cfg, await collect.collect_org(client, org_cfg, org_cfg.report, generated_at=now))
+                (org_cfg, await collect.collect_org(client, effective_cfg, report_cfg, generated_at=now))
             )
     org_reports = [report for _, report in pairs]
 
@@ -283,6 +314,8 @@ def report(
     top_n: int | None = typer.Option(None, "--top-n", help="Offenders shown per signal in Slack (default: config report.top_n, else 10)."),
     fail_threshold: str = typer.Option("none", "--fail-threshold", help="none|low|medium|high|critical|any (repo mode)."),
     force_notify: bool = typer.Option(False, "--force-notify", help="Post to Slack regardless of report_day."),
+    release_min_age_days: int | None = typer.Option(None, "--release-min-age-days", help="Exclude repos created within N days from Releases/Tagging (0 = include all; default: config, else 28)."),
+    releases_exclude: list[str] | None = typer.Option(None, "--releases-exclude", help="Repository name to omit from the Releases/Tagging table (repeatable; overrides config)."),
     no_color: bool = typer.Option(False, "--no-color", help="Disable coloured output."),
 ) -> None:
     """Generate a security and quality report."""
@@ -293,6 +326,12 @@ def report(
     # override at the boundary rather than rendering an empty/odd digest.
     if top_n is not None and top_n < 1:
         console.print("[red]--top-n must be 1 or greater[/red]")
+        raise typer.Exit(2)
+
+    # Match the config schema (release_min_age_days minimum is 0): reject a
+    # negative override at the boundary.
+    if release_min_age_days is not None and release_min_age_days < 0:
+        console.print("[red]--release-min-age-days must be 0 or greater[/red]")
         raise typer.Exit(2)
 
     cfg = _load_config(config_file, config_data, org, token_env)
@@ -326,6 +365,8 @@ def report(
                 output_dir=Path(output_dir) if output_dir else None,
                 pages_url=pages_url, top_n=top_n, force_notify=force_notify,
                 slack_channel=slack_channel or None,
+                release_min_age_days=release_min_age_days,
+                releases_exclude=tuple(releases_exclude) if releases_exclude else None,
             )
         )
     else:

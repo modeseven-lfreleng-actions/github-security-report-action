@@ -79,6 +79,17 @@ def test_org_mode_writes_pages(tmp_path: object) -> None:
         return_value=httpx.Response(404)
     )
 
+    # Dependabot posture + release/tag freshness probes (extra sections).
+    respx.get(url__startswith=f"{API}/repos/o/r/automated-security-fixes").mock(
+        return_value=httpx.Response(200, json={"enabled": True, "paused": False})
+    )
+    respx.get(url__startswith=f"{API}/repos/o/r/contents/.github/dependabot.yml").mock(
+        return_value=httpx.Response(404)
+    )
+    respx.get(url__startswith=f"{API}/repos/o/r/releases/latest").mock(
+        return_value=httpx.Response(404)
+    )
+
     out = tmp_path / "site"
     result = cli.invoke(
         app,
@@ -275,6 +286,17 @@ def test_org_mode_top_n_from_config(tmp_path: object) -> None:
         )
     )
     respx.get(url__regex=rf"{re.escape(SCORECARD)}/projects/github.com/o/r\d").mock(
+        return_value=httpx.Response(404)
+    )
+
+    # Dependabot posture + release/tag freshness probes (extra sections).
+    respx.get(
+        url__regex=rf"{re.escape(API)}/repos/o/r\d/automated-security-fixes"
+    ).mock(return_value=httpx.Response(404))
+    respx.get(
+        url__regex=rf"{re.escape(API)}/repos/o/r\d/contents/.github/dependabot.yml"
+    ).mock(return_value=httpx.Response(404))
+    respx.get(url__regex=rf"{re.escape(API)}/repos/o/r\d/releases/latest").mock(
         return_value=httpx.Response(404)
     )
 

@@ -95,6 +95,50 @@ whole run**.
   (C#, Go, Java, JavaScript, Python, Ruby, TypeScript) would later be detected
   from repository metadata to decide whether a repo *should* have it enabled.
 
+### Extra reporting categories (configuration posture & freshness)
+
+Beyond the five ranked signals, two further categories report **configuration
+posture** and **freshness**. They sit outside the four-state model and render as
+plain tables (no offender/clean/nag/unknown classification).
+
+**Dependabot** (sub-tables nested beneath the Dependabot Alerts heading):
+
+- **Enablement** — repositories where Dependabot alerts are *not* switched on
+  (the GraphQL `hasVulnerabilityAlertsEnabled` read). This replaces the
+  Dependabot signal's nag list so the same repositories are not listed twice.
+- **Update Cooldown** — repositories/ecosystems whose `.github/dependabot.yml`
+  declares an `updates` entry with **no `cooldown`**. A cooldown is a mandatory
+  requirement; **any** cooldown value passes. Repositories with no Dependabot
+  configuration are not listed.
+- **Feature Configuration** — a scored matrix of repo-level Dependabot features.
+  Each confirmed-disabled feature scores **1** (unknowns do not count); rows
+  sort by that score descending so the worst offenders rank first. Only features
+  with a public per-repository API are checked: **Dependabot alerts**
+  (`hasVulnerabilityAlertsEnabled`) and **Security updates**
+  (`GET /repos/{o}/{r}/automated-security-fixes`). **Dependabot malware alerts**
+  and **Grouped security updates** are intentionally omitted — GitHub exposes no
+  public per-repository API for them at time of writing.
+
+**Releases / Tagging** (top-level section): repositories that have gone too long
+without a release or tag. Releases (`GET /repos/{o}/{r}/releases/latest`) and
+tags (GraphQL `refs(refPrefix: "refs/tags/", orderBy: TAG_COMMIT_DATE)`) are
+reported in **two separate columns** as a human "last release / last tag" age.
+
+- **Age hold:** repositories created within `report.release_min_age_days` days
+  (default **28**, CLI `--release-min-age-days`) are excluded; **0** disables
+  the hold so every repository is included.
+- **On-demand exclusions:** `releases_exclude` (per org; CLI `--releases-exclude`,
+  repeatable) drops repositories that are never released / not consumed
+  externally.
+- **Hidden compound sort score (never displayed):** rows rank by
+  `release_staleness_days + tag_staleness_days`. A **missing** release or tag
+  contributes the repository's **full age**, so a repository with **neither** a
+  release nor a tag effectively counts its age **twice** and ranks highest. The
+  two columns show the individual staleness; the compound value is used only for
+  ordering and is deliberately not rendered. Probes are skipped for excluded /
+  too-young repositories (they cannot appear in the table anyway), saving two
+  HTTP calls each.
+
 ## 5. Metrics, ranking and columns
 
 - **Per-report-type metric definitions** — no single universal "issue count".
@@ -191,16 +235,27 @@ Sketch:
 ```json
 {
   "slack": { "channel": "releng-scm", "report_day": "tuesday" },
-  "report": { "top_n": 10, "include_archived": false, "include_test": false },
+  "report": {
+    "top_n": 10,
+    "include_archived": false,
+    "include_test": false,
+    "release_min_age_days": 28
+  },
   "organizations": [
     {
       "name": "lfreleng-actions",
       "token_env": "SECURITY_REPORT_PAT",
-      "exclude": ["actions-template"]
+      "exclude": ["actions-template"],
+      "releases_exclude": ["internal-only-repo"]
     }
   ]
 }
 ```
+
+- `report.release_min_age_days` (default `28`, `0` = include all) and the per-org
+  `releases_exclude` control the Releases / Tagging section (§4). Both can be
+  overridden at the CLI with `--release-min-age-days` and the repeatable
+  `--releases-exclude`.
 
 ## 9. Credentials and operating modes
 

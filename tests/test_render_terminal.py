@@ -79,3 +79,24 @@ def test_all_sections_present() -> None:
     out = _render(_org([]))
     for signal in report.SIGNAL_ORDER:
         assert signal.heading in out
+
+
+def test_dependabot_tables_and_releases_rendered() -> None:
+    org = _org([], count=2)
+    org.dependabot_tables = [
+        report.TableSection(
+            title="Enablement",
+            columns=("Repository", "Dependabot alerts"),
+            rows=[report.TableRow(repo=_repo("off"), cells=("❌ not enabled",))],
+        )
+    ]
+    org.releases = report.TableSection(
+        title="Releases / Tagging",
+        columns=("Repository", "Last release", "Last tag"),
+        rows=[report.TableRow(repo=_repo("stale"), cells=("never", "never"))],
+    )
+    out = _render(org)
+    assert "Enablement" in out
+    assert "off" in out
+    assert "Releases / Tagging" in out
+    assert "stale" in out

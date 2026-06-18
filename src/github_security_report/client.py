@@ -12,6 +12,7 @@ See ``docs/BRIEF.md`` sections 9, 13 and ``docs/phase0-findings.md``.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import logging
 
 import httpx
@@ -44,6 +45,36 @@ query($owner: String!, $name: String!) {
 # test) rather than scanning the analysis history, which a busy repo could push
 # a low-frequency tool out of.
 _CODE_SCANNING_SIGNAL_TOOLS = ("CodeQL", "Scorecard", "zizmor")
+
+# Most-recent tag (by underlying commit date) for the releases/tagging section.
+# A tag's target is a Commit (lightweight) or a Tag object (annotated), whose
+# own target is the Commit -- both branches are read for the committed date.
+_LATEST_TAG_QUERY = """
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    refs(refPrefix: "refs/tags/", first: 1,
+         orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {
+      nodes {
+        target {
+          __typename
+          ... on Commit { committedDate }
+          ... on Tag { target { ... on Commit { committedDate } } }
+        }
+      }
+    }
+  }
+}
+"""
+
+
+def _parse_iso(value: object) -> dt.datetime | None:
+    """Parse a GitHub ISO-8601 timestamp (``...Z``) into an aware datetime."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 class GitHubClient:
@@ -197,6 +228,7 @@ class GitHubClient:
                     fork=raw.get("fork", False),
                     is_template=raw.get("is_template", False),
                     private=raw.get("private", False),
+                    created_at=_parse_iso(raw.get("created_at")),
                 )
             )
         return status, repos
@@ -359,6 +391,7 @@ class GitHubClient:
             is_template=raw.get("is_template", False),
             private=raw.get("private", False),
             default_branch=raw.get("default_branch", "main"),
+            created_at=_parse_iso(raw.get("created_at")),
         )
 
     async def repo_code_scanning_alerts(self, org: str, repo: str) -> tuple[int, list[dict]]:
@@ -379,3 +412,82 @@ class GitHubClient:
         return await self._get_list(
             f"{self._api_url}/repos/{org}/{repo}/dependabot/alerts", state="open"
         )
+
+    # ------------------------------------------------------------------ #
+    # Dependabot posture + release/tag freshness (extra sections)
+    # ------------------------------------------------------------------ #
+    async def automated_security_fixes(self, org: str, repo: str) -> bool | None:
+        """Whether Dependabot security updates are enabled (None = indeterminate).
+
+        ``GET .../automated-security-fixes`` returns ``{enabled, paused}`` (200)
+        or 404 when the feature is disabled; any other status is indeterminate.
+        """
+        resp = await self._request(
+            "GET", f"{self._api_url}/repos/{org}/{repo}/automated-security-fixes"
+        )
+        status = resp.status_code
+        if status == 404:
+            await resp.aclose()  # release the connection; 404 = disabled
+            return False
+        if status != 200:
+            await resp.aclose()  # unread body would leak a pooled connection
+            return None
+        data = resp.json()
+        await resp.aclose()  # release the connection once the body is read
+        return bool(data.get("enabled"))
+
+    async def dependabot_config(self, org: str, repo: str) -> tuple[int, str]:
+        """Raw ``.github/dependabot.yml`` for one repo (status, text).
+
+        404 means the repo has no Dependabot configuration. The raw media type
+        returns the file body directly (no base64 decode).
+        """
+        resp = await self._request(
+            "GET",
+            f"{self._api_url}/repos/{org}/{repo}/contents/.github/dependabot.yml",
+            headers={"Accept": "application/vnd.github.raw+json"},
+        )
+        status = resp.status_code
+        if status != 200:
+            await resp.aclose()  # unread body would leak a pooled connection
+            return status, ""
+        text = resp.text
+        await resp.aclose()  # release the connection once the body is read
+        return 200, text
+
+    async def latest_release_at(self, org: str, repo: str) -> dt.datetime | None:
+        """Publish time of the latest release (None when there is none)."""
+        resp = await self._request(
+            "GET", f"{self._api_url}/repos/{org}/{repo}/releases/latest"
+        )
+        if resp.status_code != 200:
+            await resp.aclose()  # 404 = no release; release the connection
+            return None
+        data = resp.json()
+        await resp.aclose()  # release the connection once the body is read
+        return _parse_iso(data.get("published_at") or data.get("created_at"))
+
+    async def latest_tag_at(self, org: str, repo: str) -> dt.datetime | None:
+        """Commit date of the most-recent tag (None when there are no tags)."""
+        resp = await self._request(
+            "POST",
+            self._graphql_url,
+            json={
+                "query": _LATEST_TAG_QUERY,
+                "variables": {"owner": org, "name": repo},
+            },
+        )
+        if resp.status_code != 200:
+            await resp.aclose()  # unread body would leak a pooled connection
+            return None
+        data = resp.json()
+        await resp.aclose()  # release the connection once the body is read
+        repo_node = (data.get("data") or {}).get("repository") or {}
+        nodes = (repo_node.get("refs") or {}).get("nodes") or []
+        if not nodes:
+            return None
+        target = nodes[0].get("target") or {}
+        committed = target.get("committedDate")
+        if committed is None:  # annotated tag: the Tag's target is the Commit
+            committed = (target.get("target") or {}).get("committedDate")
+        return _parse_iso(committed)

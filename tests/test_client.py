@@ -293,3 +293,134 @@ async def test_repo_branch_rules(client: GitHubClient) -> None:
     status, rules = await client.repo_branch_rules("o", "r", "main")
     assert status == 200
     assert rules[0]["type"] == "workflows"
+
+
+# --------------------------------------------------------------------------- #
+# Dependabot posture + release/tag freshness probes
+# --------------------------------------------------------------------------- #
+@respx.mock
+async def test_automated_security_fixes_enabled(client: GitHubClient) -> None:
+    respx.get(f"{API}/repos/o/r/automated-security-fixes").mock(
+        return_value=httpx.Response(200, json={"enabled": True, "paused": False})
+    )
+    assert await client.automated_security_fixes("o", "r") is True
+
+
+@respx.mock
+async def test_automated_security_fixes_404_is_disabled(client: GitHubClient) -> None:
+    respx.get(f"{API}/repos/o/r/automated-security-fixes").mock(
+        return_value=httpx.Response(404)
+    )
+    assert await client.automated_security_fixes("o", "r") is False
+
+
+@respx.mock
+async def test_automated_security_fixes_error_is_indeterminate(
+    client: GitHubClient,
+) -> None:
+    respx.get(f"{API}/repos/o/r/automated-security-fixes").mock(
+        return_value=httpx.Response(403, headers={"x-ratelimit-remaining": "4999"})
+    )
+    assert await client.automated_security_fixes("o", "r") is None
+
+
+@respx.mock
+async def test_dependabot_config_returns_raw_body(client: GitHubClient) -> None:
+    respx.get(f"{API}/repos/o/r/contents/.github/dependabot.yml").mock(
+        return_value=httpx.Response(200, text="version: 2\n")
+    )
+    status, text = await client.dependabot_config("o", "r")
+    assert status == 200
+    assert text == "version: 2\n"
+
+
+@respx.mock
+async def test_dependabot_config_missing(client: GitHubClient) -> None:
+    respx.get(f"{API}/repos/o/r/contents/.github/dependabot.yml").mock(
+        return_value=httpx.Response(404)
+    )
+    status, text = await client.dependabot_config("o", "r")
+    assert status == 404
+    assert text == ""
+
+
+@respx.mock
+async def test_latest_release_at_parses_published(client: GitHubClient) -> None:
+    respx.get(f"{API}/repos/o/r/releases/latest").mock(
+        return_value=httpx.Response(200, json={"published_at": "2026-01-02T03:04:05Z"})
+    )
+    when = await client.latest_release_at("o", "r")
+    assert when is not None
+    assert when.year == 2026 and when.month == 1 and when.day == 2
+
+
+@respx.mock
+async def test_latest_release_at_none_when_absent(client: GitHubClient) -> None:
+    respx.get(f"{API}/repos/o/r/releases/latest").mock(return_value=httpx.Response(404))
+    assert await client.latest_release_at("o", "r") is None
+
+
+@respx.mock
+async def test_latest_tag_at_lightweight_commit(client: GitHubClient) -> None:
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "repository": {
+                        "refs": {
+                            "nodes": [
+                                {
+                                    "target": {
+                                        "__typename": "Commit",
+                                        "committedDate": "2025-12-31T00:00:00Z",
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+        )
+    )
+    when = await client.latest_tag_at("o", "r")
+    assert when is not None and when.year == 2025
+
+
+@respx.mock
+async def test_latest_tag_at_annotated_tag(client: GitHubClient) -> None:
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "repository": {
+                        "refs": {
+                            "nodes": [
+                                {
+                                    "target": {
+                                        "__typename": "Tag",
+                                        "target": {
+                                            "committedDate": "2025-06-01T00:00:00Z"
+                                        },
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+        )
+    )
+    when = await client.latest_tag_at("o", "r")
+    assert when is not None and when.month == 6
+
+
+@respx.mock
+async def test_latest_tag_at_none_when_no_tags(client: GitHubClient) -> None:
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(
+            200, json={"data": {"repository": {"refs": {"nodes": []}}}}
+        )
+    )
+    assert await client.latest_tag_at("o", "r") is None
