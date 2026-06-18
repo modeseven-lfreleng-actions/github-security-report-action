@@ -197,6 +197,22 @@ async def test_collect_org_complete_listing_is_not_partial() -> None:
     assert report.partial is False
 
 
+async def test_collect_org_tracks_explicitly_excluded_repos() -> None:
+    # A repo named in the org exclude list is removed from scope but tracked as
+    # explicitly excluded (distinct from the fork dropped by default scoping).
+    report = await collect.collect_org(
+        FakeClient(),
+        OrgConfig(name="o", exclude=("git-configure-action",)),
+        ReportConfig(),
+        generated_at=WHEN,
+    )
+    assert [r.name for r in report.excluded_repos] == ["git-configure-action"]
+    # It is out of scope, so it is not analysed or nagged.
+    assert report.repo_count == 1  # only dependamerge remains (fork also dropped)
+    for section in report.sections:
+        assert "git-configure-action" not in [r.name for r in section.nag_repos]
+
+
 class FakeRepoClient:
     """Per-repo client stand-in modelling the dependamerge fork mixed state."""
 
@@ -341,15 +357,22 @@ async def test_collect_org_attaches_dependabot_tables_and_releases() -> None:
         AgedPostureClient(), OrgConfig(name="o"), ReportConfig(), generated_at=WHEN
     )
     titles = [t.title for t in report.dependabot_tables]
-    assert titles == ["Enablement", "Update Cooldown", "Feature Configuration"]
+    assert titles == [
+        "Alerts Not Enabled",
+        "Security Updates Not Enabled",
+        "Update Cooldown",
+    ]
 
-    enablement = report.dependabot_tables[0]
-    assert [r.repo.name for r in enablement.rows] == ["git-configure-action"]
+    alerts = report.dependabot_tables[0]
+    assert [r.repo.name for r in alerts.rows] == ["git-configure-action"]
 
-    cooldown = report.dependabot_tables[1]
+    security_updates = report.dependabot_tables[1]
+    assert [r.repo.name for r in security_updates.rows] == ["git-configure-action"]
+
+    cooldown = report.dependabot_tables[2]
     assert [r.repo.name for r in cooldown.rows] == ["dependamerge"]  # pip, no cooldown
 
-    # The Dependabot signal nag is moved into the Enablement sub-table.
+    # The Dependabot signal nag is moved into the Alerts Not Enabled sub-table.
     dependabot = _sections(report)[SignalType.DEPENDABOT]
     assert dependabot.nag_repos == []
 

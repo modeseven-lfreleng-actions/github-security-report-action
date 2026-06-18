@@ -73,15 +73,37 @@ def test_cooldown_missing_malformed_yaml_is_empty() -> None:
 # --------------------------------------------------------------------------- #
 # Dependabot tables
 # --------------------------------------------------------------------------- #
-def test_enablement_table_lists_not_enabled_sorted() -> None:
-    table = posture.build_enablement_table([_repo("zeta"), _repo("alpha")])
+def test_alerts_table_lists_disabled_sorted() -> None:
+    postures = [
+        posture.RepoPosture(repo=_repo("zeta"), dependabot_alerts=False),
+        posture.RepoPosture(repo=_repo("alpha"), dependabot_alerts=False),
+        posture.RepoPosture(repo=_repo("on"), dependabot_alerts=True),
+        posture.RepoPosture(repo=_repo("dunno"), dependabot_alerts=None),
+    ]
+    table = posture.build_alerts_table(postures)
+    assert table.title == "Alerts Not Enabled"
+    assert table.columns == ("Repository",)
     assert [r.repo.name for r in table.rows] == ["alpha", "zeta"]
 
 
-def test_enablement_table_empty_has_note_only() -> None:
-    table = posture.build_enablement_table([])
+def test_alerts_table_empty_has_note_only() -> None:
+    table = posture.build_alerts_table(
+        [posture.RepoPosture(repo=_repo("on"), dependabot_alerts=True)]
+    )
     assert table.rows == []
     assert table.empty_note
+
+
+def test_security_updates_table_lists_disabled_sorted() -> None:
+    postures = [
+        posture.RepoPosture(repo=_repo("b"), security_updates=False),
+        posture.RepoPosture(repo=_repo("a"), security_updates=False),
+        posture.RepoPosture(repo=_repo("on"), security_updates=True),
+    ]
+    table = posture.build_security_updates_table(postures)
+    assert table.title == "Security Updates Not Enabled"
+    assert table.columns == ("Repository",)
+    assert [r.repo.name for r in table.rows] == ["a", "b"]
 
 
 def test_cooldown_table_lists_repos_missing_cooldown() -> None:
@@ -94,29 +116,21 @@ def test_cooldown_table_lists_repos_missing_cooldown() -> None:
     assert table.rows[0].cells == ("pip, npm",)
 
 
-def test_feature_table_scores_and_ranks_worst_first() -> None:
+def test_dependabot_tables_order_and_titles() -> None:
     postures = [
-        # both disabled -> score 2
         posture.RepoPosture(
-            repo=_repo("worst"), dependabot_alerts=False, security_updates=False
-        ),
-        # one disabled -> score 1
-        posture.RepoPosture(
-            repo=_repo("mid"), dependabot_alerts=True, security_updates=False
-        ),
-        # unknown does not count -> excluded (score 0)
-        posture.RepoPosture(
-            repo=_repo("unknown"), dependabot_alerts=None, security_updates=True
-        ),
-        # both enabled -> excluded
-        posture.RepoPosture(
-            repo=_repo("clean"), dependabot_alerts=True, security_updates=True
-        ),
+            repo=_repo("x"),
+            dependabot_alerts=False,
+            security_updates=False,
+            cooldown_missing=("pip",),
+        )
     ]
-    table = posture.build_feature_table(postures)
-    assert [r.repo.name for r in table.rows] == ["worst", "mid"]
-    assert table.rows[0].cells == ("\u274c", "\u274c", "2")
-    assert table.rows[1].cells == ("\u2705", "\u274c", "1")
+    tables = posture.build_dependabot_tables(postures)
+    assert [t.title for t in tables] == [
+        "Alerts Not Enabled",
+        "Security Updates Not Enabled",
+        "Update Cooldown",
+    ]
 
 
 # --------------------------------------------------------------------------- #

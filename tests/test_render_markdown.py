@@ -88,6 +88,22 @@ class TestSection:
         out = markdown.render_section(_org([]).sections[0])
         assert "_No data available._" in out
 
+    def test_top_n_limits_offender_rows(self) -> None:
+        signals = [
+            RepoSignal(
+                _repo(f"r{i}"),
+                SignalType.CODEQL,
+                RepoState.OFFENDER,
+                SeverityCounts(high=i),
+            )
+            for i in range(1, 6)
+        ]
+        section = _org(signals, count=5).sections[0]
+        out = markdown.render_section(section, top_n=2)
+        # Two data rows under the header + separator.
+        body_rows = [ln for ln in out.splitlines() if ln.startswith("| [r")]
+        assert len(body_rows) == 2
+
 
 class TestOrgAndReport:
     def test_org_header(self) -> None:
@@ -152,3 +168,10 @@ class TestExtraTables:
         # Releases section rendered at the top level after all signals.
         assert "## Releases / Tagging" in out
         assert "| [z](https://github.com/o/z) | never | never |" in out
+
+    def test_org_shows_excluded_repos(self) -> None:
+        org = _org([], count=2)
+        org.excluded_repos = [_repo("opted-out")]
+        out = markdown.render_org(org)
+        assert "Excluded from analysis (1)" in out
+        assert "`opted-out`" in out

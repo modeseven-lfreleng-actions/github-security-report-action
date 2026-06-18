@@ -103,6 +103,9 @@ environment-variable name, never embedded.
   "slack": { "channel": "releng-scm", "report_day": "tuesday" },
   "report": {
     "top_n": 10,
+    "top_n_report": 10,
+    "top_n_cli": 10,
+    "top_n_slack": 10,
     "include_archived": false,
     "include_test": false,
     "release_min_age_days": 28
@@ -121,9 +124,19 @@ environment-variable name, never embedded.
 `report_day` accepts a single weekday, a list of weekdays, `"never"`, or
 `"always"`.
 
+`top_n` controls how many offenders are shown per signal. It is the shared
+default for all three outputs; set any of `top_n_report` (GitHub Pages),
+`top_n_cli` (terminal), or `top_n_slack` (Slack digest) to override an
+individual output. Each can also be set at the CLI with `--top-n`,
+`--top-n-report`, `--top-n-cli`, and `--top-n-slack`.
+
 `report.release_min_age_days` (default `28`, `0` = include all) and the per-org
 `releases_exclude` tune the Releases / Tagging section; they can be overridden
 locally with `--release-min-age-days` and the repeatable `--releases-exclude`.
+
+The per-org `exclude` list removes repositories from analysis entirely; they are
+reported as **excluded** (distinct from "not enabled"), so an intentional
+exclusion is visible rather than silently dropped.
 
 `slack.channel` is optional. The action's `slack_channel` input (wired to the
 `SLACK_CHANNEL_ID` variable in `reporting.yaml`) overrides it, so the channel
@@ -164,7 +177,10 @@ and the Slack **bot token** is consumed by the workflow, not the CLI.
 | `output_dir` | No | — | Directory for Pages output (org mode) |
 | `pages_url` | No | — | Published Pages URL (used in the Slack link) |
 | `slack_channel` | No | — | Slack channel ID; overrides the config `slack.channel` (e.g. the `SLACK_CHANNEL_ID` variable) |
-| `top_n` | No | `10` | Offenders per signal in the Slack digest |
+| `top_n` | No | `10` | Offenders per signal across all outputs (shared default) |
+| `top_n_report` | No | — | Offenders per signal in the GitHub Pages output (overrides `top_n`) |
+| `top_n_cli` | No | — | Offenders per signal in the terminal output (overrides `top_n`) |
+| `top_n_slack` | No | — | Offenders per signal in the Slack digest (overrides `top_n`) |
 | `fail_threshold` | No | `none` | `none`/`low`/`medium`/`high`/`critical`/`any` (repo mode) |
 | `force_notify` | No | `false` | Post to Slack regardless of `report_day` |
 | `tool_version` | No | `0.1.0` | Published PyPI version (ignored on pull requests) |

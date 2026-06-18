@@ -11,7 +11,9 @@ repos excluded), and an unknown count. See ``docs/BRIEF.md`` sections 4-6, 11.
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import TypeVar
 
 from github_security_report import scope
 from github_security_report.models import (
@@ -82,6 +84,10 @@ class OrgReport:
     # True when the repository listing was incomplete (e.g. a truncated or
     # forbidden org repos read), so the report may omit repositories.
     partial: bool = False
+    # Repositories removed from analysis by the per-org ``exclude`` list. These
+    # are reported as "excluded" (counted, never analysed) so an explicit
+    # exclusion is visible and distinct from a "not enabled" nag.
+    excluded_repos: list[Repo] = field(default_factory=list)
     # Extra Dependabot posture tables rendered as sub-sections beneath the
     # "Dependabot" heading, after the open-alert table (enablement, cooldown,
     # feature configuration). Empty in repo mode / when not collected.
@@ -97,6 +103,23 @@ class Report:
     generated_at: dt.datetime
 
 
+_T = TypeVar("_T")
+
+
+def truncate(items: Sequence[_T], top_n: int | None) -> tuple[list[_T], int]:
+    """Limit a sequence for display, returning ``(shown, hidden_count)``.
+
+    The single place every render surface applies an offender limit, so the
+    GitHub Pages, terminal and Slack outputs truncate tables and name lists
+    identically. ``top_n`` of ``None`` (or large enough) shows everything and
+    reports ``0`` hidden.
+    """
+    seq = list(items)
+    if top_n is None or top_n < 0 or len(seq) <= top_n:
+        return seq, 0
+    return seq[:top_n], len(seq) - top_n
+
+
 def build_org_report(
     org: str,
     repo_signals: list[RepoSignal],
@@ -104,6 +127,7 @@ def build_org_report(
     repo_count: int,
     generated_at: dt.datetime | None = None,
     partial: bool = False,
+    excluded_repos: list[Repo] | None = None,
 ) -> OrgReport:
     """Assemble an :class:`OrgReport` from a flat list of classified signals."""
     when = generated_at or dt.datetime.now(dt.timezone.utc)
@@ -134,4 +158,5 @@ def build_org_report(
         repo_count=repo_count,
         generated_at=when,
         partial=partial,
+        excluded_repos=sorted(excluded_repos or [], key=lambda r: r.name),
     )

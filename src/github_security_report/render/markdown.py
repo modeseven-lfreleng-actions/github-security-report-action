@@ -16,6 +16,7 @@ from github_security_report.report import (
     Report,
     SignalSection,
     TableSection,
+    truncate,
 )
 
 
@@ -41,12 +42,15 @@ def _row(sig: RepoSignal) -> list[str]:
     return [_link(sig.repo), str(c.critical), str(c.high), str(c.medium), str(c.low), str(c.total)]
 
 
-def _table(section: SignalSection) -> list[str]:
+def _table(section: SignalSection, top_n: int | None = None) -> list[str]:
     cols = _columns(section.signal)
     aligns = ["---"] + ["---:"] * (len(cols) - 1)
     lines = ["| " + " | ".join(cols) + " |", "| " + " | ".join(aligns) + " |"]
-    for sig in section.offenders:
+    offenders, hidden = truncate(section.offenders, top_n)
+    for sig in offenders:
         lines.append("| " + " | ".join(_row(sig)) + " |")
+    if hidden:
+        lines.append(f"\n_… and {hidden} more_")
     return lines
 
 
@@ -62,18 +66,21 @@ def row_cells(sig: RepoSignal) -> list[str]:
     return _row(sig)
 
 
-def render_section(section: SignalSection) -> str:
+def render_section(section: SignalSection, *, top_n: int | None = None) -> str:
     lines = [f"## {section.signal.heading}", ""]
     if section.offenders:
-        lines.extend(_table(section))
+        lines.extend(_table(section, top_n))
         lines.append("")
     if section.clean_count:
         lines.append(f"✅ {section.clean_count} repositories clean")
         lines.append("")
     if section.nag_repos:
+        nag, hidden = truncate(section.nag_repos, top_n)
         lines.append("**Not enabled** — enable to appear in future reports:")
         lines.append("")
-        lines.extend(f"- {_link(r)}" for r in section.nag_repos)
+        lines.extend(f"- {_link(r)}" for r in nag)
+        if hidden:
+            lines.append(f"- _… and {hidden} more_")
         lines.append("")
     if section.unknown_count:
         lines.append(
@@ -92,28 +99,35 @@ def render_section(section: SignalSection) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_table_section(section: TableSection, *, level: int = 3) -> str:
+def render_table_section(
+    section: TableSection, *, level: int = 3, top_n: int | None = None
+) -> str:
     """Render a generic posture/freshness table at the given heading level."""
     heading = "#" * level
     lines = [f"{heading} {section.title}", ""]
-    if section.rows:
+    rows, hidden = truncate(section.rows, top_n)
+    if rows:
         aligns = ["---"] * len(section.columns)
         lines.append("| " + " | ".join(section.columns) + " |")
         lines.append("| " + " | ".join(aligns) + " |")
-        for row in section.rows:
+        for row in rows:
             cells = [_link(row.repo), *row.cells]
             lines.append("| " + " | ".join(cells) + " |")
         lines.append("")
+        if hidden:
+            lines.append(f"_… and {hidden} more_")
+            lines.append("")
+        if section.note:
+            # The note describes a populated table; omit it when empty.
+            lines.append(f"_{section.note}_")
+            lines.append("")
     elif section.empty_note:
         lines.append(f"✅ {section.empty_note}")
-        lines.append("")
-    if section.note:
-        lines.append(f"_{section.note}_")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_org(org: OrgReport) -> str:
+def render_org(org: OrgReport, *, top_n: int | None = None) -> str:
     when = org.generated_at.strftime("%Y-%m-%d %H:%M UTC")
     parts = [
         f"# Security report: {org.org}",
@@ -127,19 +141,31 @@ def render_org(org: OrgReport) -> str:
             "read, so some repositories may be missing from this report."
         )
         parts.append("")
+    if org.excluded_repos:
+        shown, hidden = truncate(org.excluded_repos, top_n)
+        names = ", ".join(f"`{r.name}`" for r in shown)
+        if hidden:
+            names += f" … (+{hidden} more)"
+        parts.append(
+            f"⏩ **Excluded from analysis ({len(org.excluded_repos)}):** {names}"
+        )
+        parts.append("")
     for section in org.sections:
-        parts.append(render_section(section))
+        parts.append(render_section(section, top_n=top_n))
         # The Dependabot configuration-posture sub-tables (enablement, cooldown,
         # feature matrix) nest beneath the Dependabot Alerts heading.
         if section.signal is SignalType.DEPENDABOT:
             parts.extend(
-                render_table_section(table, level=3)
+                render_table_section(table, level=3, top_n=top_n)
                 for table in org.dependabot_tables
             )
     if org.releases is not None:
-        parts.append(render_table_section(org.releases, level=2))
+        parts.append(render_table_section(org.releases, level=2, top_n=top_n))
     return "\n".join(parts).rstrip() + "\n"
 
 
-def render_report(report: Report) -> str:
-    return "\n\n".join(render_org(org) for org in report.orgs).rstrip() + "\n"
+def render_report(report: Report, *, top_n: int | None = None) -> str:
+    return (
+        "\n\n".join(render_org(org, top_n=top_n) for org in report.orgs).rstrip()
+        + "\n"
+    )

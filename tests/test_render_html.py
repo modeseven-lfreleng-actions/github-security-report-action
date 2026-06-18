@@ -94,6 +94,14 @@ class TestOrgHtml:
         assert '<a href="https://github.com/o/stale">stale</a>' in out
         assert "Ranked by combined staleness." in out
 
+    def test_renders_excluded_banner(self) -> None:
+        org = _org("o", [], count=3)
+        org.excluded_repos = [_repo("opted-out")]
+        out = html.render_org_html(org)
+        assert "excluded-banner" in out
+        assert "Excluded from analysis (1)" in out
+        assert '<a href="https://github.com/o/opted-out">opted-out</a>' in out
+
 
 class TestIndexHtml:
     def test_card_per_org(self) -> None:

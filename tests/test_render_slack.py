@@ -100,8 +100,8 @@ def test_dependabot_and_releases_tables_rendered() -> None:
     org.dependabot_tables = [
         report.TableSection(
             title="Feature Configuration",
-            columns=("Repository", "Dependabot alerts", "Security updates", "Disabled"),
-            rows=[report.TableRow(repo=_repo("bad"), cells=("❌", "❌", "2"))],
+            columns=("Repository", "Dependabot alerts", "Security updates"),
+            rows=[report.TableRow(repo=_repo("bad"), cells=("❌", "❌"))],
         )
     ]
     org.releases = report.TableSection(

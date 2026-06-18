@@ -43,7 +43,19 @@ inputs:
     required: false
     default: ""
   top_n:
-    description: "Offenders shown per signal in the Slack digest (default: config report.top_n, else 10)"
+    description: "Offenders shown per signal across all outputs (default: config, else 10); per-output inputs below override it"
+    required: false
+    default: ""
+  top_n_report:
+    description: "Offenders shown per signal in the GitHub Pages output (overrides top_n)"
+    required: false
+    default: ""
+  top_n_cli:
+    description: "Offenders shown per signal in the terminal output (overrides top_n)"
+    required: false
+    default: ""
+  top_n_slack:
+    description: "Offenders shown per signal in the Slack digest (overrides top_n)"
     required: false
     default: ""
   fail_threshold:
@@ -102,6 +114,9 @@ runs:
         INPUT_PAGES_URL: ${{ inputs.pages_url }}
         INPUT_SLACK_CHANNEL: ${{ inputs.slack_channel }}
         INPUT_TOP_N: ${{ inputs.top_n }}
+        INPUT_TOP_N_REPORT: ${{ inputs.top_n_report }}
+        INPUT_TOP_N_CLI: ${{ inputs.top_n_cli }}
+        INPUT_TOP_N_SLACK: ${{ inputs.top_n_slack }}
         INPUT_FAIL_THRESHOLD: ${{ inputs.fail_threshold }}
         INPUT_FORCE_NOTIFY: ${{ inputs.force_notify }}
         TOOL_VERSION: ${{ inputs.tool_version }}
@@ -150,6 +165,9 @@ runs:
         [ -n "$INPUT_PAGES_URL" ] && args+=(--pages-url "$INPUT_PAGES_URL")
         [ -n "$INPUT_SLACK_CHANNEL" ] && args+=(--slack-channel "$INPUT_SLACK_CHANNEL")
         [ -n "$INPUT_TOP_N" ] && args+=(--top-n "$INPUT_TOP_N")
+        [ -n "$INPUT_TOP_N_REPORT" ] && args+=(--top-n-report "$INPUT_TOP_N_REPORT")
+        [ -n "$INPUT_TOP_N_CLI" ] && args+=(--top-n-cli "$INPUT_TOP_N_CLI")
+        [ -n "$INPUT_TOP_N_SLACK" ] && args+=(--top-n-slack "$INPUT_TOP_N_SLACK")
         [ -n "$INPUT_FAIL_THRESHOLD" ] && args+=(--fail-threshold "$INPUT_FAIL_THRESHOLD")
         [ "$INPUT_FORCE_NOTIFY" = "true" ] && args+=(--force-notify)
 

@@ -125,3 +125,19 @@ class TestBuildOrgReport:
         assert sections[SignalType.SCORECARD].offenders[0].score == 8.2
         assert sections[SignalType.CODEQL].clean_count == 1
         assert sections[SignalType.SECRET_SCANNING].clean_count == 1
+
+
+class TestTruncate:
+    def test_no_limit_returns_all(self) -> None:
+        assert report.truncate([1, 2, 3], None) == ([1, 2, 3], 0)
+
+    def test_under_limit_returns_all(self) -> None:
+        assert report.truncate([1, 2], 5) == ([1, 2], 0)
+
+    def test_over_limit_truncates_and_counts_hidden(self) -> None:
+        shown, hidden = report.truncate([1, 2, 3, 4, 5], 2)
+        assert shown == [1, 2]
+        assert hidden == 3
+
+    def test_exact_limit_hides_nothing(self) -> None:
+        assert report.truncate([1, 2, 3], 3) == ([1, 2, 3], 0)

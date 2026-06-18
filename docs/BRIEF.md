@@ -110,14 +110,16 @@ plain tables (no offender/clean/nag/unknown classification).
   declares an `updates` entry with **no `cooldown`**. A cooldown is a mandatory
   requirement; **any** cooldown value passes. Repositories with no Dependabot
   configuration are not listed.
-- **Feature Configuration** — a scored matrix of repo-level Dependabot features.
-  Each confirmed-disabled feature scores **1** (unknowns do not count); rows
-  sort by that score descending so the worst offenders rank first. Only features
-  with a public per-repository API are checked: **Dependabot alerts**
-  (`hasVulnerabilityAlertsEnabled`) and **Security updates**
-  (`GET /repos/{o}/{r}/automated-security-fixes`). **Dependabot malware alerts**
-  and **Grouped security updates** are intentionally omitted — GitHub exposes no
-  public per-repository API for them at time of writing.
+- **Feature Configuration** — a matrix of repo-level Dependabot features, one
+  column per feature (✅/❌/❓). Rows are ranked by the number of
+  confirmed-disabled features (unknowns do not count), worst first; that count
+  is a **hidden sort key and is never shown as a column** — the disabled cells
+  already make it visible. Only features with a public per-repository API are
+  checked: **Dependabot alerts** (`hasVulnerabilityAlertsEnabled`) and
+  **Security updates** (`GET /repos/{o}/{r}/automated-security-fixes`).
+  **Dependabot malware alerts** and **Grouped security updates** are
+  intentionally omitted — GitHub exposes no public per-repository API for them
+  at time of writing.
 
 **Releases / Tagging** (top-level section): repositories that have gone too long
 without a release or tag. Releases (`GET /repos/{o}/{r}/releases/latest`) and
@@ -204,7 +206,10 @@ considered even though our own org has few/no private repos). Empty/disabled
 repos auto-skipped.
 
 - **Per-org `exclude` list** — optional (mirrors `.github/excluded-repos.json`);
-  omitted in the minimal config and defaults to empty.
+  omitted in the minimal config and defaults to empty. Excluded repositories are
+  removed from analysis but **surfaced as "excluded"** (counted and listed once
+  per org, on every render surface), so an explicit exclusion is visible and
+  clearly distinct from a "not enabled" nag rather than silently dropped.
 - **Archived** — fully excluded by default; opt back in via config option +
   CLI flag.
 - **Test repos** — excluded by default; opt back in via `--include-test`.

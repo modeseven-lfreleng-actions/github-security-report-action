@@ -30,7 +30,7 @@ def _env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_version() -> None:
     result = cli.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert "github-security-report" in result.stdout
+    assert "github-security-report version" in result.stdout
 
 
 def test_safe_component_blocks_path_traversal() -> None:
@@ -271,6 +271,13 @@ def test_non_positive_top_n_rejected() -> None:
     result = cli.invoke(app, ["report", "--org", "o", "--top-n", "0", "--no-color"])
     assert result.exit_code == 2
     assert "top-n" in result.stdout
+
+
+@pytest.mark.parametrize("flag", ["--top-n-report", "--top-n-cli", "--top-n-slack"])
+def test_non_positive_per_category_top_n_rejected(flag: str) -> None:
+    result = cli.invoke(app, ["report", "--org", "o", flag, "0", "--no-color"])
+    assert result.exit_code == 2
+    assert flag in result.stdout
 
 
 @pytest.mark.parametrize("bad", ["justaname", "o/r/extra", "/r", "o/"])

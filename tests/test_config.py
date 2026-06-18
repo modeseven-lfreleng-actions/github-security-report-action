@@ -122,6 +122,48 @@ class TestBuildConfig:
         with pytest.raises(ConfigError):
             config.build_config({"organizations": [{"name": "o"}], "bogus": 1})
 
+    def test_top_n_shared_default_applies_to_all_outputs(self) -> None:
+        data = {
+            "report": {"top_n": 7},
+            "organizations": [{"name": "o"}],
+        }
+        rc = config.build_config(data).organizations[0].report
+        assert (rc.report_top_n, rc.cli_top_n, rc.slack_top_n) == (7, 7, 7)
+
+    def test_top_n_per_category_overrides(self) -> None:
+        data = {
+            "report": {
+                "top_n": 10,
+                "top_n_report": 25,
+                "top_n_cli": 5,
+                "top_n_slack": 3,
+            },
+            "organizations": [{"name": "o"}],
+        }
+        rc = config.build_config(data).organizations[0].report
+        assert rc.report_top_n == 25
+        assert rc.cli_top_n == 5
+        assert rc.slack_top_n == 3
+
+    def test_top_n_partial_override_falls_back_to_shared(self) -> None:
+        data = {
+            "report": {"top_n": 10, "top_n_slack": 3},
+            "organizations": [{"name": "o"}],
+        }
+        rc = config.build_config(data).organizations[0].report
+        assert rc.report_top_n == 10  # falls back to shared
+        assert rc.cli_top_n == 10
+        assert rc.slack_top_n == 3
+
+    def test_rejects_zero_top_n_category(self) -> None:
+        with pytest.raises(ConfigError):
+            config.build_config(
+                {
+                    "report": {"top_n_cli": 0},
+                    "organizations": [{"name": "o"}],
+                }
+            )
+
     def test_requires_organizations(self) -> None:
         with pytest.raises(ConfigError):
             config.build_config({"slack": {}})

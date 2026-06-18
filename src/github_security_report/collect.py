@@ -168,6 +168,11 @@ async def collect_org(
         include_test=report_cfg.include_test,
         exclude=org_cfg.exclude,
     )
+    # Repositories removed specifically by the per-org exclude list (not by
+    # fork/template/archived/test filtering) are tracked so the report can show
+    # them as explicitly excluded rather than silently dropping them.
+    exclude_names = set(org_cfg.exclude)
+    excluded_repos = [repo for repo in repos if repo.name in exclude_names]
 
     # One org-bulk sweep per signal, plus the workflow-driven ruleset coverage
     # (concurrent). Each sweep returns its HTTP status so an unreadable sweep
@@ -244,6 +249,7 @@ async def collect_org(
         repo_count=len(in_scope),
         generated_at=generated_at,
         partial=repos_status != 200,
+        excluded_repos=excluded_repos,
     )
 
     # Extra reporting categories (outside the four-state model): Dependabot
@@ -274,20 +280,16 @@ async def collect_org(
             )
         )
 
-    not_enabled = sorted(
-        (f.repo for f in facts if f.dependabot_enabled is False),
-        key=lambda r: r.name,
-    )
-    report.dependabot_tables = posture.build_dependabot_tables(not_enabled, postures)
+    report.dependabot_tables = posture.build_dependabot_tables(postures)
     report.releases = posture.build_releases_table(
         postures,
         generated_at=when,
         min_age_days=report_cfg.release_min_age_days,
         exclude=org_cfg.releases_exclude,
     )
-    # The Enablement sub-table now carries the not-enabled repositories, so drop
-    # them from the Dependabot signal section's nag list to avoid listing the
-    # same repositories twice under the one heading.
+    # The "Alerts Not Enabled" sub-table carries the repositories with Dependabot
+    # alerts disabled, so drop them from the Dependabot signal section's nag list
+    # to avoid listing the same repositories twice under the one heading.
     for section in report.sections:
         if section.signal is SignalType.DEPENDABOT:
             section.nag_repos = []

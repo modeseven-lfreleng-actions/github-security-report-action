@@ -11,7 +11,12 @@ Produces a ``chat.postMessage`` payload. See ``docs/BRIEF.md`` section 11.
 from __future__ import annotations
 
 from github_security_report.models import RepoSignal, SignalType
-from github_security_report.report import OrgReport, SignalSection, TableSection
+from github_security_report.report import (
+    OrgReport,
+    SignalSection,
+    TableSection,
+    truncate,
+)
 
 # Slack rejects a chat.postMessage with more than 50 blocks, so a digest
 # spanning many orgs must be capped or the whole message fails to deliver.
@@ -88,11 +93,14 @@ def _table_block(section: TableSection, top_n: int) -> dict | None:
     """
     if not section.rows:
         return None
+    shown, hidden = truncate(section.rows, top_n)
     rows = [
         [row.repo.name, *(cell.replace("✅", "y").replace("❌", "n").replace("❓", "?") for cell in row.cells)]
-        for row in section.rows[:top_n]
+        for row in shown
     ]
     table = _fixed_table_generic(section.columns, rows)
+    if hidden:
+        table += f"\n… and {hidden} more"
     return {
         "type": "section",
         "text": {"type": "mrkdwn", "text": f"*{section.title}*\n```\n{table}\n```"},
@@ -116,6 +124,23 @@ def render_org_blocks(org: OrgReport, *, top_n: int, pages_url: str | None) -> l
                         "type": "mrkdwn",
                         "text": "⚠️ Incomplete: the repository listing could not "
                         "be fully read; some repositories may be missing.",
+                    }
+                ],
+            }
+        )
+    if org.excluded_repos:
+        shown, hidden = truncate(org.excluded_repos, top_n)
+        names = ", ".join(r.name for r in shown)
+        if hidden:
+            names += f" … (+{hidden} more)"
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"⏩ Excluded from analysis "
+                        f"({len(org.excluded_repos)}): {names}",
                     }
                 ],
             }

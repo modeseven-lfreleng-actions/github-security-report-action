@@ -5,13 +5,12 @@
 These reporting categories sit outside the four-state per-signal model: they are
 configuration-posture and freshness checks rendered as plain tables.
 
-- **Dependabot** (beneath the open-alert table): which repos have not enabled
-  Dependabot, which configured ecosystems set no update *cooldown* (a mandatory
-  requirement here -- any cooldown value passes), and a per-feature matrix
-  scored by the number of confirmed-disabled features so the worst offenders
-  rank first. Only features with a public API are checked (Dependabot alerts and
-  Dependabot security updates); "malware alerts" and "grouped security updates"
-  have no public per-repo API at time of writing and are omitted.
+- **Dependabot** (beneath the open-alert table): three plain tables -- repos
+  with vulnerability **alerts** not enabled, repos with **security updates** not
+  enabled (two separate single-feature tables, not a combined matrix), and
+  configured ecosystems that set no update *cooldown* (a mandatory requirement
+  here -- any cooldown value passes). Only the two features GitHub exposes a
+  public per-repository API for are checked.
 - **Releases / Tagging**: repositories that have gone too long without a release
   or tag. Repositories younger than a configurable age are excluded (0 = none
   excluded); specific repositories can also be excluded on demand. Releases and
@@ -32,16 +31,6 @@ from github_security_report.models import Repo
 from github_security_report.report import TableRow, TableSection
 
 log = logging.getLogger(__name__)
-
-_ENABLED = "✅"
-_DISABLED = "❌"
-_UNKNOWN = "❓"
-
-# The Dependabot features probed for the per-feature matrix. Each maps to a
-# repo-level boolean (None = could not determine). "Dependabot malware alerts"
-# and "Grouped security updates" are intentionally absent: GitHub exposes no
-# public per-repository API for them at time of writing.
-DEPENDABOT_FEATURES: tuple[str, ...] = ("Dependabot alerts", "Security updates")
 
 
 @dataclass
@@ -129,29 +118,33 @@ def _age_cell(age: int | None) -> str:
     return f"{age} days ago"
 
 
-def _feature_cell(value: bool | None) -> str:
-    if value is None:
-        return _UNKNOWN
-    return _ENABLED if value else _DISABLED
-
-
-def _feature_score(posture: RepoPosture) -> int:
-    """Number of *confirmed*-disabled features (unknowns do not count)."""
-    flags = (posture.dependabot_alerts, posture.security_updates)
-    return sum(1 for flag in flags if flag is False)
-
-
-def build_enablement_table(not_enabled: list[Repo]) -> TableSection:
-    """A table of repositories where Dependabot alerts are not enabled."""
+def build_alerts_table(postures: list[RepoPosture]) -> TableSection:
+    """Repositories where Dependabot vulnerability alerts are not enabled."""
     rows = [
-        TableRow(repo=repo, cells=(f"{_DISABLED} not enabled",))
-        for repo in sorted(not_enabled, key=lambda r: r.name)
+        TableRow(repo=p.repo, cells=())
+        for p in sorted(postures, key=lambda p: p.repo.name)
+        if p.dependabot_alerts is False
     ]
     return TableSection(
-        title="Enablement",
-        columns=("Repository", "Dependabot alerts"),
+        title="Alerts Not Enabled",
+        columns=("Repository",),
         rows=rows,
-        empty_note="All in-scope repositories have Dependabot alerts enabled.",
+        empty_note="Every in-scope repository has Dependabot alerts enabled.",
+    )
+
+
+def build_security_updates_table(postures: list[RepoPosture]) -> TableSection:
+    """Repositories where Dependabot security updates are not enabled."""
+    rows = [
+        TableRow(repo=p.repo, cells=())
+        for p in sorted(postures, key=lambda p: p.repo.name)
+        if p.security_updates is False
+    ]
+    return TableSection(
+        title="Security Updates Not Enabled",
+        columns=("Repository",),
+        rows=rows,
+        empty_note="Every in-scope repository has Dependabot security updates enabled.",
     )
 
 
@@ -176,46 +169,17 @@ def build_cooldown_table(postures: list[RepoPosture]) -> TableSection:
     )
 
 
-def build_feature_table(postures: list[RepoPosture]) -> TableSection:
-    """A scored matrix of Dependabot features, worst (most disabled) first."""
-    scored = [(p, _feature_score(p)) for p in postures]
-    offenders = [(p, score) for p, score in scored if score >= 1]
-    offenders.sort(key=lambda item: (-item[1], item[0].repo.name))
-    rows = [
-        TableRow(
-            repo=p.repo,
-            cells=(
-                _feature_cell(p.dependabot_alerts),
-                _feature_cell(p.security_updates),
-                str(score),
-            ),
-        )
-        for p, score in offenders
-    ]
-    return TableSection(
-        title="Feature Configuration",
-        columns=("Repository", "Dependabot alerts", "Security updates", "Disabled"),
-        rows=rows,
-        empty_note=(
-            "No in-scope repository has a disabled Dependabot feature."
-        ),
-        note=(
-            "Sorted by the number of disabled features (most first). "
-            f"{_ENABLED} enabled, {_DISABLED} disabled, {_UNKNOWN} unknown. "
-            "Dependabot malware alerts and grouped security updates are omitted "
-            "(no public per-repository API)."
-        ),
-    )
+def build_dependabot_tables(postures: list[RepoPosture]) -> list[TableSection]:
+    """All extra Dependabot posture tables, in render order.
 
-
-def build_dependabot_tables(
-    not_enabled: list[Repo], postures: list[RepoPosture]
-) -> list[TableSection]:
-    """All extra Dependabot posture tables, in render order."""
+    The alerts and security-updates enablement checks are deliberately two
+    separate single-feature tables (rather than one multi-column matrix): with
+    only two public-API features the matrix read as contradictory.
+    """
     return [
-        build_enablement_table(not_enabled),
+        build_alerts_table(postures),
+        build_security_updates_table(postures),
         build_cooldown_table(postures),
-        build_feature_table(postures),
     ]
 
 
@@ -267,23 +231,25 @@ def build_releases_table(
         title="Releases / Tagging",
         columns=("Repository", "Last release", "Last tag"),
         rows=rows,
-        empty_note="Every in-scope repository has a recent release or tag.",
+        empty_note=(
+            "No repositories to report (all were excluded by the minimum age "
+            "or the exclusion list)."
+        ),
         note=(
             f"Repositories created within {min_age_days} day(s) are excluded. "
-            "Ranked by combined release and tag staleness (oldest first); a "
-            "repository with neither a release nor a tag ranks highest."
+            "Ranked by combined release and tag staleness (oldest first). "
+            "A repository with neither a release nor a tag ranks highest."
         ),
     )
 
 
 __all__ = [
     "RepoPosture",
-    "DEPENDABOT_FEATURES",
     "is_release_excluded",
     "cooldown_missing_ecosystems",
     "build_dependabot_tables",
     "build_releases_table",
-    "build_enablement_table",
+    "build_alerts_table",
+    "build_security_updates_table",
     "build_cooldown_table",
-    "build_feature_table",
 ]

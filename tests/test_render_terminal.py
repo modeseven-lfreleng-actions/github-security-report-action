@@ -58,9 +58,9 @@ def test_clean_nag_unknown_notes() -> None:
     ]
     out = _render(_org(signals, count=3))
     assert "1 clean" in out
-    assert "not enabled" in out
-    assert "nagme" in out
-    assert "unknown" in out
+    assert "1 disabled" in out  # numerical total
+    assert "Disabled: nagme" in out  # name breakdown, separate line
+    assert "1 unknown" in out
 
 
 def test_scorecard_score_shown() -> None:
@@ -100,3 +100,64 @@ def test_dependabot_tables_and_releases_rendered() -> None:
     assert "off" in out
     assert "Releases / Tagging" in out
     assert "stale" in out
+
+
+def test_excluded_repos_shown_under_each_section_with_count() -> None:
+    signals = [RepoSignal(_repo("clean"), SignalType.CODEQL, RepoState.CLEAN)]
+    org = _org(signals, count=5)
+    org.excluded_repos = [_repo("opted-out")]
+    out = _render(org)
+    # Numerical total separated from the name breakdown.
+    assert "1 excluded" in out
+    assert "Excluded: opted-out" in out
+
+
+def test_table_note_split_one_sentence_per_line() -> None:
+    org = _org([], count=1)
+    org.releases = report.TableSection(
+        title="Releases / Tagging",
+        columns=("Repository", "Last release", "Last tag"),
+        rows=[report.TableRow(repo=_repo("r"), cells=("never", "never"))],
+        note="First sentence here. Second sentence here. Third one.",
+    )
+    out = _render(org)
+    # Each sentence on its own line (no two sentences joined on one line).
+    assert "First sentence here.\n" in out
+    assert "Second sentence here." in out
+    assert "Third one." in out
+
+
+def test_disabled_total_and_names_on_separate_lines() -> None:
+    signals = [RepoSignal(_repo("nagme"), SignalType.CODEQL, RepoState.NAG)]
+    out = _render(_org(signals, count=1))
+    assert "1 disabled" in out  # total line
+    assert "Disabled: nagme" in out  # names line
+    assert "not enabled" not in out  # old lowercase label is gone
+
+
+def test_top_n_limits_generic_table_and_name_lists() -> None:
+    # top_n must apply consistently: offender table, generic tables, and the
+    # Disabled/Excluded name lists all honour the same limit with a tally.
+    signals = [
+        RepoSignal(_repo(f"nag{i}"), SignalType.CODEQL, RepoState.NAG) for i in range(5)
+    ]
+    org = _org(signals, count=10)
+    org.excluded_repos = [_repo(f"ex{i}") for i in range(4)]
+    org.releases = report.TableSection(
+        title="Releases / Tagging",
+        columns=("Repository", "Last release", "Last tag"),
+        rows=[
+            report.TableRow(repo=_repo(f"r{i}"), cells=("never", "never"))
+            for i in range(7)
+        ],
+    )
+    console = Console(record=True, width=200, no_color=True)
+    terminal.render_org(org, console, top_n=2)
+    out = console.export_text()
+    # Totals remain the true count; the name lists are truncated with a tally.
+    assert "5 disabled" in out
+    assert "(+3 more)" in out  # 5 disabled, 2 shown
+    assert "4 excluded" in out
+    assert "(+2 more)" in out  # 4 excluded, 2 shown
+    # The generic Releases table is limited to 2 rows + an "and N more" line.
+    assert "… and 5 more" in out  # 7 rows, 2 shown

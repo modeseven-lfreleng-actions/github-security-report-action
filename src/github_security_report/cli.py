@@ -31,7 +31,7 @@ from github_security_report.render import html as html_render
 from github_security_report.render import markdown as md_render
 from github_security_report.render import slack as slack_render
 from github_security_report.render import terminal as term_render
-from github_security_report.report import OrgReport, Report, TableSection, build_org_report
+from github_security_report.report import OrgReport, TableSection, build_org_report
 
 app = typer.Typer(
     name="github-security-report",
@@ -43,7 +43,9 @@ app = typer.Typer(
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(f"github-security-report {__version__}")
+        # Match the dependamerge style: a label emoji plus a Rich-highlighted
+        # version number (Rich colourises the numeric version automatically).
+        Console().print(f"🏷️  github-security-report version {__version__}")
         raise typer.Exit()
 
 
@@ -91,6 +93,8 @@ def _org_to_dict(org: OrgReport) -> dict:
         # Surfaced so JSON consumers can distinguish a complete result from a
         # partial one (the repository listing could not be fully read).
         "partial": org.partial,
+        # Repositories explicitly excluded from analysis (per-org exclude list).
+        "excluded": [r.full_name for r in org.excluded_repos],
         "sections": [
             {
                 "signal": s.signal.value,
@@ -135,12 +139,18 @@ def _safe_component(value: str) -> str:
     return safe or "channel"
 
 
-def _write_org_files(org: OrgReport, output_dir: Path) -> None:
+def _write_org_files(
+    org: OrgReport, output_dir: Path, *, top_n: int | None = None
+) -> None:
     slug = html_render.slugify(org.org)
     org_dir = output_dir / slug
     org_dir.mkdir(parents=True, exist_ok=True)
-    (org_dir / "report.md").write_text(md_render.render_org(org), encoding="utf-8")
-    (org_dir / "report.html").write_text(html_render.render_org_html(org), encoding="utf-8")
+    (org_dir / "report.md").write_text(
+        md_render.render_org(org, top_n=top_n), encoding="utf-8"
+    )
+    (org_dir / "report.html").write_text(
+        html_render.render_org_html(org, top_n=top_n), encoding="utf-8"
+    )
     (org_dir / "report.json").write_text(
         json.dumps(_org_to_dict(org), indent=2) + "\n", encoding="utf-8"
     )
@@ -182,7 +192,10 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
                    pages_url: str | None, top_n: int | None, force_notify: bool,
                    slack_channel: str | None = None,
                    release_min_age_days: int | None = None,
-                   releases_exclude: tuple[str, ...] | None = None) -> int:
+                   releases_exclude: tuple[str, ...] | None = None,
+                   top_n_report: int | None = None,
+                   top_n_cli: int | None = None,
+                   top_n_slack: int | None = None) -> int:
     now = dt.datetime.now(dt.timezone.utc)
     pairs: list[tuple[OrgConfig, OrgReport]] = []
     for org_cfg in cfg.organizations:
@@ -203,12 +216,27 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
             )
     org_reports = [report for _, report in pairs]
 
-    full_report = Report(orgs=org_reports, generated_at=now)
-    term_render.render_orgs(org_reports, console)
+    # Per-output offender limit: a category-specific CLI override wins, then the
+    # shared --top-n override, then the org's configured value for that output.
+    def _limit(org_cfg: OrgConfig, override: int | None, attr: str) -> int:
+        if override is not None:
+            return override
+        if top_n is not None:
+            return top_n
+        return int(getattr(org_cfg.report, attr))
+
+    for org_cfg, org_report in pairs:
+        term_render.render_org(
+            org_report, console, top_n=_limit(org_cfg, top_n_cli, "cli_top_n")
+        )
 
     if output_dir:
-        for org in org_reports:
-            _write_org_files(org, output_dir)
+        for org_cfg, org_report in pairs:
+            _write_org_files(
+                org_report,
+                output_dir,
+                top_n=_limit(org_cfg, top_n_report, "report_top_n"),
+            )
         (output_dir / "index.html").write_text(
             html_render.render_index_html(org_reports), encoding="utf-8"
         )
@@ -240,17 +268,15 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
             continue
         by_channel.setdefault(channel, []).append((org_cfg, org_report))
 
-    # The CLI --top-n (when given) overrides config; otherwise each org's
-    # report.top_n applies. Orgs sharing a channel render into one payload, so
-    # take the most generous configured value for that channel.
+    # The Slack digest uses each org's slack offender limit (category override >
+    # shared --top-n > config slack_top_n). Orgs sharing a channel render into
+    # one payload, so take the most generous configured value for that channel.
     payloads = [
         slack_render.render_payload(
             [report for _, report in items],
             channel=channel,
-            top_n=(
-                top_n
-                if top_n is not None
-                else max(oc.report.top_n for oc, _ in items)
+            top_n=max(
+                _limit(oc, top_n_slack, "slack_top_n") for oc, _ in items
             ),
             pages_url=pages_url,
         )
@@ -265,7 +291,18 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
                 dest = output_dir / f"slack-payload-{_safe_component(payload['channel'])}.json"
                 dest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     runner.write_github_output(outputs)
-    runner.append_step_summary(md_render.render_report(full_report))
+    # The job summary mirrors the GitHub Pages Markdown, so it uses the report
+    # offender limit per org.
+    summary = (
+        "\n\n".join(
+            md_render.render_org(
+                org_report, top_n=_limit(org_cfg, top_n_report, "report_top_n")
+            )
+            for org_cfg, org_report in pairs
+        ).rstrip()
+        + "\n"
+    )
+    runner.append_step_summary(summary)
     return 0
 
 
@@ -320,7 +357,10 @@ def report(
     output_dir: str | None = typer.Option(None, "--output-dir", "-o", help="Directory for Pages output (org mode)."),
     pages_url: str | None = typer.Option(None, "--pages-url", help="GitHub Pages URL for the Slack link."),
     slack_channel: str | None = typer.Option(None, "--slack-channel", help="Slack channel ID; overrides config slack.channel (e.g. SLACK_CHANNEL_ID)."),
-    top_n: int | None = typer.Option(None, "--top-n", help="Offenders shown per signal in Slack (default: config report.top_n, else 10)."),
+    top_n: int | None = typer.Option(None, "--top-n", help="Offenders shown per signal across all outputs (default: config, else 10). Overridden per output by the flags below."),
+    top_n_report: int | None = typer.Option(None, "--top-n-report", help="Offenders per signal in the GitHub Pages output (overrides --top-n)."),
+    top_n_cli: int | None = typer.Option(None, "--top-n-cli", help="Offenders per signal in the terminal output (overrides --top-n)."),
+    top_n_slack: int | None = typer.Option(None, "--top-n-slack", help="Offenders per signal in the Slack digest (overrides --top-n)."),
     fail_threshold: str = typer.Option("none", "--fail-threshold", help="none|low|medium|high|critical|any (repo mode)."),
     force_notify: bool = typer.Option(False, "--force-notify", help="Post to Slack regardless of report_day."),
     release_min_age_days: int | None = typer.Option(None, "--release-min-age-days", help="Exclude repos created within N days from Releases/Tagging (0 = include all; default: config, else 28)."),
@@ -331,11 +371,17 @@ def report(
     plain = no_color or bool(os.environ.get("CI")) or not sys.stdout.isatty()
     console = Console(no_color=plain, highlight=False)
 
-    # Match the config schema (report.top_n minimum is 1): reject a non-positive
+    # Match the config schema (top_n minimum is 1): reject a non-positive
     # override at the boundary rather than rendering an empty/odd digest.
-    if top_n is not None and top_n < 1:
-        console.print("[red]--top-n must be 1 or greater[/red]")
-        raise typer.Exit(2)
+    for name, value in (
+        ("--top-n", top_n),
+        ("--top-n-report", top_n_report),
+        ("--top-n-cli", top_n_cli),
+        ("--top-n-slack", top_n_slack),
+    ):
+        if value is not None and value < 1:
+            console.print(f"[red]{name} must be 1 or greater[/red]")
+            raise typer.Exit(2)
 
     # Match the config schema (release_min_age_days minimum is 0): reject a
     # negative override at the boundary.
@@ -376,6 +422,9 @@ def report(
                 slack_channel=slack_channel or None,
                 release_min_age_days=release_min_age_days,
                 releases_exclude=tuple(releases_exclude) if releases_exclude else None,
+                top_n_report=top_n_report,
+                top_n_cli=top_n_cli,
+                top_n_slack=top_n_slack,
             )
         )
     else:

@@ -65,6 +65,9 @@ CONFIG_SCHEMA: dict = {
             "additionalProperties": False,
             "properties": {
                 "top_n": {"type": "integer", "minimum": 1},
+                "top_n_report": {"type": "integer", "minimum": 1},
+                "top_n_cli": {"type": "integer", "minimum": 1},
+                "top_n_slack": {"type": "integer", "minimum": 1},
                 "include_archived": {"type": "boolean"},
                 "include_test": {"type": "boolean"},
                 "release_min_age_days": {"type": "integer", "minimum": 0},
@@ -132,7 +135,13 @@ DEFAULT_RULESET_WORKFLOWS = {"zizmor": "zizmor"}
 
 @dataclass(frozen=True)
 class ReportConfig:
+    # Shared default number of offenders shown per signal; per-output overrides
+    # below take precedence when set. report = GitHub Pages (Markdown + HTML),
+    # cli = terminal, slack = the Slack digest.
     top_n: int = 10
+    top_n_report: int | None = None
+    top_n_cli: int | None = None
+    top_n_slack: int | None = None
     include_archived: bool = False
     include_test: bool = False
     # Repositories created within this many days are excluded from the
@@ -141,6 +150,21 @@ class ReportConfig:
     ruleset_workflows: dict[str, str] = field(
         default_factory=lambda: dict(DEFAULT_RULESET_WORKFLOWS)
     )
+
+    @property
+    def report_top_n(self) -> int:
+        """Offenders shown per signal in the GitHub Pages output."""
+        return self.top_n_report if self.top_n_report is not None else self.top_n
+
+    @property
+    def cli_top_n(self) -> int:
+        """Offenders shown per signal in the terminal output."""
+        return self.top_n_cli if self.top_n_cli is not None else self.top_n
+
+    @property
+    def slack_top_n(self) -> int:
+        """Offenders shown per signal in the Slack digest."""
+        return self.top_n_slack if self.top_n_slack is not None else self.top_n
 
 
 @dataclass(frozen=True)
@@ -207,6 +231,9 @@ def _report_from(data: dict, base: ReportConfig) -> ReportConfig:
             for k, v in data.items()
             if k in {
                 "top_n",
+                "top_n_report",
+                "top_n_cli",
+                "top_n_slack",
                 "include_archived",
                 "include_test",
                 "release_min_age_days",

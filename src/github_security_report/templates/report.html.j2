@@ -40,6 +40,8 @@
     .crit { color: #c53030; font-weight: 600; }
     .partial-banner { background: #fffaf0; border: 1px solid #dd6b20; color: #9c4221;
                       border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; }
+    .excluded-banner { background: #ebf8ff; border: 1px solid #4299e1; color: #2c5282;
+                       border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; }
     footer { text-align: center; color: #718096; font-size: 0.85rem; padding: 1rem; }
   </style>
 </head>
@@ -55,6 +57,13 @@
       <span aria-hidden="true">⚠️</span> <strong>Incomplete:</strong> the repository
       listing could not be fully read, so some repositories may be missing from
       this report.
+    </div>
+    {% endif %}
+
+    {% if excluded %}
+    <div class="excluded-banner">
+      <span aria-hidden="true">⏩</span> <strong>Excluded from analysis ({{ excluded_total }}):</strong>
+      {% for r in excluded %}<a href="{{ r.url }}">{{ r.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if excluded_hidden %} … and {{ excluded_hidden }} more{% endif %}
     </div>
     {% endif %}
 
@@ -75,11 +84,12 @@
           {% endfor %}
         </tbody>
       </table>
+      {% if s.hidden %}<p class="note">… and {{ s.hidden }} more</p>{% endif %}
       {% endif %}
       {% if s.clean_count %}<p class="clean"><span aria-hidden="true">✅</span> {{ s.clean_count }} repositories clean</p>{% endif %}
       {% if s.nag %}
       <p class="nag-title">Not enabled — enable to appear in future reports:</p>
-      <ul class="nag">{% for r in s.nag %}<li><a href="{{ r.url }}">{{ r.name }}</a></li>{% endfor %}</ul>
+      <ul class="nag">{% for r in s.nag %}<li><a href="{{ r.url }}">{{ r.name }}</a></li>{% endfor %}{% if s.nag_hidden %}<li>… and {{ s.nag_hidden }} more</li>{% endif %}</ul>
       {% endif %}
       {% if s.unknown_count %}<p class="unknown"><span aria-hidden="true">ℹ️</span> {{ s.unknown_count }} repositories with unknown status (insufficient permissions)</p>{% endif %}
       {% if not (s.rows or s.clean_count or s.nag or s.unknown_count) %}<p class="empty">No data available.</p>{% endif %}
@@ -99,8 +109,9 @@
           {% endfor %}
         </tbody>
       </table>
+      {% if t.hidden %}<p class="note">… and {{ t.hidden }} more</p>{% endif %}
       {% elif t.empty_note %}<p class="clean"><span aria-hidden="true">✅</span> {{ t.empty_note }}</p>{% endif %}
-      {% if t.note %}<p class="note">{{ t.note }}</p>{% endif %}
+      {% if t.rows and t.note %}<p class="note">{{ t.note }}</p>{% endif %}
       {% endfor %}
     </section>
     {% endfor %}
@@ -122,8 +133,9 @@
           {% endfor %}
         </tbody>
       </table>
+      {% if releases.hidden %}<p class="note">… and {{ releases.hidden }} more</p>{% endif %}
       {% elif releases.empty_note %}<p class="clean"><span aria-hidden="true">✅</span> {{ releases.empty_note }}</p>{% endif %}
-      {% if releases.note %}<p class="note">{{ releases.note }}</p>{% endif %}
+      {% if releases.rows and releases.note %}<p class="note">{{ releases.note }}</p>{% endif %}
     </section>
     {% endif %}
 

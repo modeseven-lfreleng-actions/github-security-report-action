@@ -15,7 +15,12 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 
 from github_security_report.models import RepoSignal, SignalType
 from github_security_report.render import markdown
-from github_security_report.report import OrgReport, SignalSection, TableSection
+from github_security_report.report import (
+    OrgReport,
+    SignalSection,
+    TableSection,
+    truncate,
+)
 
 # Pinned, not @latest (a security tool must not load a floating CDN asset).
 DATATABLES_VERSION = "9.0.3"
@@ -54,54 +59,66 @@ def _row_cells(sig: RepoSignal) -> list[str]:
     return markdown.row_cells(sig)[1:]
 
 
-def _table_context(section: TableSection) -> dict:
+def _table_context(section: TableSection, top_n: int | None = None) -> dict:
     """Context for a generic posture/freshness table (Dependabot, releases)."""
+    rows, hidden = truncate(section.rows, top_n)
     return {
         "title": section.title,
         "columns": list(section.columns),
         "rows": [
             {"name": row.repo.name, "url": row.repo.html_url, "cells": list(row.cells)}
-            for row in section.rows
+            for row in rows
         ],
+        "hidden": hidden,
         "empty_note": section.empty_note,
         "note": section.note,
     }
 
 
-def _section_context(section: SignalSection) -> dict:
+def _section_context(section: SignalSection, top_n: int | None = None) -> dict:
+    offenders, hidden = truncate(section.offenders, top_n)
+    nag, nag_hidden = truncate(section.nag_repos, top_n)
     return {
         "title": section.signal.heading,
         "columns": markdown.columns(section.signal),
         "rows": [
             {"name": s.repo.name, "url": s.repo.html_url, "cells": _row_cells(s)}
-            for s in section.offenders
+            for s in offenders
         ],
+        "hidden": hidden,
         "clean_count": section.clean_count,
-        "nag": [{"name": r.name, "url": r.html_url} for r in section.nag_repos],
+        "nag": [{"name": r.name, "url": r.html_url} for r in nag],
+        "nag_hidden": nag_hidden,
         "unknown_count": section.unknown_count,
     }
 
 
-def render_org_html(org: OrgReport) -> str:
+def render_org_html(org: OrgReport, *, top_n: int | None = None) -> str:
     template = _env.get_template("report.html.j2")
     sections: list[dict] = []
     for section in org.sections:
-        ctx = _section_context(section)
+        ctx = _section_context(section, top_n)
         # The Dependabot posture sub-tables render beneath the Dependabot
         # Alerts section, inside the same card.
         if section.signal is SignalType.DEPENDABOT:
             ctx["extra_tables"] = [
-                _table_context(t) for t in org.dependabot_tables
+                _table_context(t, top_n) for t in org.dependabot_tables
             ]
         sections.append(ctx)
+    excluded_shown, excluded_hidden = truncate(org.excluded_repos, top_n)
     return str(
         template.render(
             org=org.org,
             repo_count=org.repo_count,
             generated_at=org.generated_at.strftime("%Y-%m-%d %H:%M UTC"),
             partial=org.partial,
+            excluded=[
+                {"name": r.name, "url": r.html_url} for r in excluded_shown
+            ],
+            excluded_total=len(org.excluded_repos),
+            excluded_hidden=excluded_hidden,
             sections=sections,
-            releases=_table_context(org.releases) if org.releases else None,
+            releases=_table_context(org.releases, top_n) if org.releases else None,
             datatables_version=DATATABLES_VERSION,
             datatables_css_sri=DATATABLES_CSS_SRI,
             datatables_js_sri=DATATABLES_JS_SRI,
