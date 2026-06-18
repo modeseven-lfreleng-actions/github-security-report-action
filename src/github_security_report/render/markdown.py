@@ -50,7 +50,8 @@ def _table(section: SignalSection, top_n: int | None = None) -> list[str]:
     for sig in offenders:
         lines.append("| " + " | ".join(_row(sig)) + " |")
     if hidden:
-        lines.append(f"\n_… and {hidden} more_")
+        lines.append("")
+        lines.append(f"_… and {hidden} more_")
     return lines
 
 
@@ -85,7 +86,7 @@ def render_section(section: SignalSection, *, top_n: int | None = None) -> str:
     if section.unknown_count:
         lines.append(
             f"ℹ️ {section.unknown_count} repositories with unknown status "
-            "(insufficient permissions)"
+            "(insufficient permission or a transient read failure)"
         )
         lines.append("")
     if not (

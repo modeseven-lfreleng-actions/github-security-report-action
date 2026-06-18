@@ -76,8 +76,9 @@ def test_top_n_limits_code_fence_rows() -> None:
     blocks = slack.render_org_blocks(_org(signals, count=5), top_n=2, pages_url=None)
     codeql = next(b for b in blocks if "CodeQL" in b.get("text", {}).get("text", ""))
     fence = codeql["text"]["text"].split("```")[1]
-    # header row + 2 data rows
-    assert len(fence.strip().splitlines()) == 3
+    # header row + 2 data rows + a "… and N more" tally (5 offenders, 2 shown).
+    assert len(fence.strip().splitlines()) == 4
+    assert "… and 3 more" in fence
 
 
 def test_pages_link_context() -> None:

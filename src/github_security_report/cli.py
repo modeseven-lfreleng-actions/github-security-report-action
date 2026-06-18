@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import sys
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
@@ -308,7 +309,7 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
 
 async def _run_repo(owner: str, repo_name: str, *, token_env: str, console: Console,
                     fail_threshold: str,
-                    ruleset_workflows: dict[str, str] | None = None) -> int:
+                    ruleset_workflows: Mapping[str, str] | None = None) -> int:
     token = os.environ.get(token_env, "").strip()
     if not token:
         console.print(f"[red]No token in ${token_env}[/red]")

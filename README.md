@@ -39,9 +39,9 @@ API research it is built on.
 Two further sections report **configuration posture** and **freshness** as plain
 tables (org mode):
 
-- **Dependabot** — repositories without Dependabot enabled, ecosystems with no
-  update `cooldown` configured (mandatory; any value passes), and a scored
-  matrix of disabled Dependabot features (worst first).
+- **Dependabot** — three tables: repositories with vulnerability **alerts not
+  enabled**, repositories with **security updates not enabled**, and ecosystems
+  with no update `cooldown` configured (mandatory; any value passes).
 - **Releases / Tagging** — repositories overdue a release or tag, ranked by a
   hidden compound staleness score. Repositories younger than
   `release_min_age_days` (default 28; `0` includes all) and those in

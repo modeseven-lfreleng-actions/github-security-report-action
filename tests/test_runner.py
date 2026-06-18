@@ -95,6 +95,18 @@ class TestActionsIO:
         assert "body<<ghadelim_" in content  # unique per-value delimiter
         assert "line1\nline2" in content
 
+    def test_write_github_output_rejects_unsafe_key(self, tmp_path: object) -> None:
+        # A non-identifier key (newline / '=' / '<<') must not be written, so it
+        # cannot corrupt the output file or inject extra outputs.
+        out = tmp_path / "out.txt"
+        runner.write_github_output(
+            {"ok": "1", "bad\nkey=x<<EOF": "2", "with space": "3"}, str(out)
+        )
+        content = out.read_text()
+        assert "ok=1" in content
+        assert "bad" not in content
+        assert "with space" not in content
+
     def test_append_step_summary(self, tmp_path: object) -> None:
         summary = tmp_path / "summary.md"
         runner.append_step_summary("## Hi", str(summary))

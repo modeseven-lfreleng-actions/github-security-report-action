@@ -74,7 +74,8 @@ load-bearing architecture:
    mode), and Rich terminal (local).
 8. **Configuration** is JSON (CLI file, plain `vars.`, or base64 in `secrets.`),
    global defaults + per-org overrides, `jsonschema`-validated, with tokens
-   referenced by env-var name and a mandatory per-org exclude list.
+   referenced by env-var name and an optional per-org exclude list (defaults to
+   empty).
 9. **Scheduling**: a single daily 09:00 UTC workflow refreshes Pages every day;
    Slack is gated to `report_day` (default Tuesday) via a tool-owned
    `should_notify` output.

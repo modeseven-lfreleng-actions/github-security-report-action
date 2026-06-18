@@ -19,6 +19,7 @@ GitHub APIs.
 from __future__ import annotations
 
 import fnmatch
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 # Patterns GitHub uses to mean "every repository".
@@ -93,7 +94,7 @@ def _paths_match_keyword(paths: tuple[str, ...] | list[str], keyword: str) -> bo
 def signals_covered(
     name: str,
     rulesets: list[WorkflowRuleset],
-    signal_keywords: dict[str, str],
+    signal_keywords: Mapping[str, str],
 ) -> set[str]:
     """Signals (by value) that an org ruleset enforces for this repository.
 
@@ -113,7 +114,7 @@ def signals_covered(
 
 def signals_from_branch_rules(
     rules: list[dict],
-    signal_keywords: dict[str, str],
+    signal_keywords: Mapping[str, str],
 ) -> set[str]:
     """Signals covered for a single repo, from its effective branch rules.
 

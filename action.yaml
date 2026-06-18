@@ -131,6 +131,17 @@ runs:
           echo "Error: token_env '$TOKEN_ENV' is not a valid environment-variable name" >&2
           exit 1
         fi
+        # Refuse to clobber reserved runner/Actions variables: exporting the
+        # token into e.g. PATH or GITHUB_OUTPUT would break command resolution
+        # or the tool's output/summary writing. GITHUB_TOKEN is the legitimate
+        # default target and is intentionally not on the deny-list. -x anchors
+        # the match to the whole name.
+        # yamllint disable-line rule:line-length
+        reserved='PATH|HOME|IFS|GITHUB_ENV|GITHUB_PATH|GITHUB_OUTPUT|GITHUB_STATE|GITHUB_STEP_SUMMARY|GITHUB_ACTION_PATH|GITHUB_WORKSPACE|RUNNER_TEMP|RUNNER_OS|RUNNER_ARCH|LD_PRELOAD|LD_LIBRARY_PATH'
+        if printf '%s' "$TOKEN_ENV" | grep -Eqx "$reserved"; then
+          echo "Error: token_env '$TOKEN_ENV' is a reserved variable name" >&2
+          exit 1
+        fi
         export "${TOKEN_ENV}=${TOKEN_VALUE}"
 
         # Org mode needs a classic PAT with org-level security scopes; the

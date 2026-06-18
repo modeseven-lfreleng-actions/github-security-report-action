@@ -129,7 +129,7 @@ def build_alerts_table(postures: list[RepoPosture]) -> TableSection:
         title="Alerts Not Enabled",
         columns=("Repository",),
         rows=rows,
-        empty_note="Every in-scope repository has Dependabot alerts enabled.",
+        empty_note="No in-scope repository has Dependabot alerts confirmed disabled.",
     )
 
 
@@ -144,7 +144,10 @@ def build_security_updates_table(postures: list[RepoPosture]) -> TableSection:
         title="Security Updates Not Enabled",
         columns=("Repository",),
         rows=rows,
-        empty_note="Every in-scope repository has Dependabot security updates enabled.",
+        empty_note=(
+            "No in-scope repository has Dependabot security updates confirmed "
+            "disabled."
+        ),
     )
 
 
@@ -227,6 +230,12 @@ def build_releases_table(
         )
         for _compound, posture, release_age, tag_age in ranked
     ]
+    if min_age_days > 0:
+        age_note = (
+            f"Repositories created within {min_age_days} day(s) are excluded. "
+        )
+    else:
+        age_note = "All repositories are included (no minimum age). "
     return TableSection(
         title="Releases / Tagging",
         columns=("Repository", "Last release", "Last tag"),
@@ -236,8 +245,8 @@ def build_releases_table(
             "or the exclusion list)."
         ),
         note=(
-            f"Repositories created within {min_age_days} day(s) are excluded. "
-            "Ranked by combined release and tag staleness (oldest first). "
+            age_note
+            + "Ranked by combined release and tag staleness (oldest first). "
             "A repository with neither a release nor a tag ranks highest."
         ),
     )

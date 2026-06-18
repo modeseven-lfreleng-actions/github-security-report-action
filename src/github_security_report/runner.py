@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import secrets
 from enum import Enum
 
@@ -17,6 +18,11 @@ from github_security_report.models import RepoSignal
 from github_security_report.severity import Severity
 
 log = logging.getLogger(__name__)
+
+# GitHub Actions output names are alphanumeric plus '-'/'_'. Validating the key
+# (not just the value) stops a non-identifier key -- e.g. one containing a
+# newline, '=' or '<<' -- from corrupting $GITHUB_OUTPUT or injecting outputs.
+_OUTPUT_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 
 
 class Mode(str, Enum):
@@ -118,6 +124,11 @@ def write_github_output(values: dict[str, str], path: str | None = None) -> None
         return
     with open(target, "a", encoding="utf-8") as handle:
         for key, value in values.items():
+            if not _OUTPUT_KEY.match(key):
+                # A non-identifier key would corrupt the output file; skip it
+                # loudly rather than write something injectable.
+                log.error("refusing to write unsafe GITHUB_OUTPUT key: %r", key)
+                continue
             if "\n" in value:
                 delimiter = f"ghadelim_{secrets.token_hex(16)}"
                 while delimiter in value:

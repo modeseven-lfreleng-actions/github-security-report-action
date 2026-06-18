@@ -15,6 +15,7 @@ import asyncio
 import datetime as dt
 import logging
 from collections import defaultdict
+from collections.abc import Mapping
 from typing import Protocol
 
 from github_security_report import posture, rulesets, scope
@@ -85,10 +86,16 @@ async def _facts_for_repo(
     ruleset_signals: set[str],
     sweep_status: dict[str, int],
 ) -> RepoFacts:
-    cs_status, cs_tools = await client.code_scanning_tools(org, repo.name)
-    secret_status = await client.secret_scanning_status(org, repo.name)
-    dependabot_on = await client.dependabot_enabled(org, repo.name)
-    scorecard_status, score = await client.scorecard_score(org, repo.name)
+    # These per-repo probes are independent; gather them so each repo's reads
+    # overlap. Real HTTP concurrency stays bounded by the client semaphore.
+    (cs_status, cs_tools), secret_status, dependabot_on, (scorecard_status, score) = (
+        await asyncio.gather(
+            client.code_scanning_tools(org, repo.name),
+            client.secret_scanning_status(org, repo.name),
+            client.dependabot_enabled(org, repo.name),
+            client.scorecard_score(org, repo.name),
+        )
+    )
     return RepoFacts(
         repo=repo,
         code_scanning_status=cs_status,
@@ -122,8 +129,12 @@ async def _posture_for_repo(
     tag probes are skipped for repositories excluded from the Releases/Tagging
     table (young or opted out), which then carry no release/tag timestamps.
     """
-    security_updates = await client.automated_security_fixes(org, repo.name)
-    cfg_status, cfg_text = await client.dependabot_config(org, repo.name)
+    # The enablement and config reads are independent; gather them (the client
+    # semaphore still bounds real HTTP concurrency).
+    security_updates, (cfg_status, cfg_text) = await asyncio.gather(
+        client.automated_security_fixes(org, repo.name),
+        client.dependabot_config(org, repo.name),
+    )
     has_config = cfg_status == 200
     cooldown_missing = (
         posture.cooldown_missing_ecosystems(cfg_text) if has_config else ()
@@ -131,8 +142,11 @@ async def _posture_for_repo(
     latest_release_at: dt.datetime | None = None
     latest_tag_at: dt.datetime | None = None
     if not skip_release_probes:
-        latest_release_at = await client.latest_release_at(org, repo.name)
-        latest_tag_at = await client.latest_tag_at(org, repo.name)
+        # Release and tag probes are independent too; gather them.
+        latest_release_at, latest_tag_at = await asyncio.gather(
+            client.latest_release_at(org, repo.name),
+            client.latest_tag_at(org, repo.name),
+        )
     return RepoPosture(
         repo=repo,
         dependabot_alerts=dependabot_alerts,
@@ -301,7 +315,7 @@ async def collect_repo(
     owner: str,
     repo_name: str,
     *,
-    ruleset_workflows: dict[str, str] | None = None,
+    ruleset_workflows: Mapping[str, str] | None = None,
 ) -> tuple[Repo | None, list[RepoSignal]]:
     """Collect and classify a single repository (repo mode, ``GITHUB_TOKEN``).
 

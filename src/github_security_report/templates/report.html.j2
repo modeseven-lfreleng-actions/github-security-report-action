@@ -91,7 +91,7 @@
       <p class="nag-title">Not enabled — enable to appear in future reports:</p>
       <ul class="nag">{% for r in s.nag %}<li><a href="{{ r.url }}">{{ r.name }}</a></li>{% endfor %}{% if s.nag_hidden %}<li>… and {{ s.nag_hidden }} more</li>{% endif %}</ul>
       {% endif %}
-      {% if s.unknown_count %}<p class="unknown"><span aria-hidden="true">ℹ️</span> {{ s.unknown_count }} repositories with unknown status (insufficient permissions)</p>{% endif %}
+      {% if s.unknown_count %}<p class="unknown"><span aria-hidden="true">ℹ️</span> {{ s.unknown_count }} repositories with unknown status (insufficient permission or a transient read failure)</p>{% endif %}
       {% if not (s.rows or s.clean_count or s.nag or s.unknown_count) %}<p class="empty">No data available.</p>{% endif %}
       {% for t in s.extra_tables or [] %}
       <h3>{{ t.title }}</h3>

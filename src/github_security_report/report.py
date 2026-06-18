@@ -64,10 +64,18 @@ class TableRow:
 
 @dataclass
 class TableSection:
-    """A generic titled table rendered as a sub-section under a heading."""
+    """A generic titled table rendered as a sub-section under a heading.
+
+    The **first** column is always the repository column -- every renderer puts
+    the repository link/name there (from each :class:`TableRow`'s ``repo``).
+    Its header *label* is free-form (usually ``"Repository"``, but a single-list
+    table may describe its contents instead, e.g. ``"Repositories NOT
+    Enabled"``); downstream consumers should treat column 0 as the repository
+    regardless of the label.
+    """
 
     title: str
-    columns: tuple[str, ...]  # includes the leading "Repository" column
+    columns: tuple[str, ...]  # column 0 is the repository column (label varies)
     rows: list[TableRow] = field(default_factory=list)
     # Shown in place of the table when there are no rows (a clean state).
     empty_note: str = ""
@@ -89,11 +97,12 @@ class OrgReport:
     # exclusion is visible and distinct from a "not enabled" nag.
     excluded_repos: list[Repo] = field(default_factory=list)
     # Extra Dependabot posture tables rendered as sub-sections beneath the
-    # "Dependabot" heading, after the open-alert table (enablement, cooldown,
-    # feature configuration). Empty in repo mode / when not collected.
+    # Dependabot Alerts heading (alerts not enabled, security updates not
+    # enabled, update cooldown). Empty in repo mode / when not collected.
     dependabot_tables: list[TableSection] = field(default_factory=list)
-    # The Releases / Tagging table (release and tag staleness), or None when
-    # not collected (repo mode) or no repositories qualify.
+    # The Releases / Tagging table (release and tag staleness). None only when
+    # not collected (repo mode); org mode always assigns a section, which may
+    # have zero rows and render its empty_note instead.
     releases: TableSection | None = None
 
 
@@ -111,8 +120,10 @@ def truncate(items: Sequence[_T], top_n: int | None) -> tuple[list[_T], int]:
 
     The single place every render surface applies an offender limit, so the
     GitHub Pages, terminal and Slack outputs truncate tables and name lists
-    identically. ``top_n`` of ``None`` (or large enough) shows everything and
-    reports ``0`` hidden.
+    identically. ``top_n`` of ``None`` or a negative value (or one at least the
+    sequence length) shows everything and reports ``0`` hidden -- the negative
+    case is a defensive no-op, since negative slicing would otherwise drop
+    items from the end.
     """
     seq = list(items)
     if top_n is None or top_n < 0 or len(seq) <= top_n:

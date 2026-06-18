@@ -43,7 +43,8 @@ def _plain_row(sig: RepoSignal) -> list[str]:
 
 def _fixed_table(section: SignalSection, top_n: int) -> str:
     cols = _plain_columns(section.signal)
-    rows = [_plain_row(s) for s in section.top(top_n)]
+    shown, hidden = truncate(section.offenders, top_n)
+    rows = [_plain_row(s) for s in shown]
     widths = [len(c) for c in cols]
     for row in rows:
         for i, cell in enumerate(row):
@@ -55,6 +56,9 @@ def _fixed_table(section: SignalSection, top_n: int) -> str:
         return "  ".join(cells)
 
     lines = [fmt(cols)] + [fmt(row) for row in rows]
+    if hidden:
+        # Match the posture/release tables: surface the hidden count.
+        lines.append(f"… and {hidden} more")
     return "\n".join(lines)
 
 

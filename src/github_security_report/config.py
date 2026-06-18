@@ -17,8 +17,10 @@ import datetime as dt
 import json
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from types import MappingProxyType
 
 import jsonschema
 
@@ -147,8 +149,10 @@ class ReportConfig:
     # Repositories created within this many days are excluded from the
     # Releases/Tagging requirement (0 = include all repositories).
     release_min_age_days: int = 28
-    ruleset_workflows: dict[str, str] = field(
-        default_factory=lambda: dict(DEFAULT_RULESET_WORKFLOWS)
+    # Read-only mapping (frozen dataclasses do not deep-freeze a plain dict, so a
+    # MappingProxyType prevents in-place mutation of a shared config).
+    ruleset_workflows: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType(dict(DEFAULT_RULESET_WORKFLOWS))
     )
 
     @property
@@ -243,7 +247,7 @@ def _report_from(data: dict, base: ReportConfig) -> ReportConfig:
     if "ruleset_workflows" in data:
         # Merge so the built-in defaults (e.g. zizmor) survive unless overridden.
         merged = {**base.ruleset_workflows, **data["ruleset_workflows"]}
-        result = replace(result, ruleset_workflows=merged)
+        result = replace(result, ruleset_workflows=MappingProxyType(merged))
     return result
 
 
