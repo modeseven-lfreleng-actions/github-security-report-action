@@ -1,0 +1,198 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Linux Foundation
+
+[build-system]
+requires = ["hatchling>=1.24", "hatch-vcs>=0.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "github-security-report"
+dynamic = ["version"]
+description = "Security and quality reporting across GitHub organisations"
+authors = [
+    { name = "The Linux Foundation", email = "mwatkins@linuxfoundation.org" },
+]
+license = "Apache-2.0"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Security",
+  "Typing :: Typed",
+]
+keywords = [
+  "github",
+  "security",
+  "reporting",
+  "codeql",
+  "scorecard",
+  "zizmor",
+  "dependabot",
+  "secret-scanning",
+  "github-actions",
+  "linux-foundation",
+]
+dependencies = [
+  "httpx[http2]==0.28.1",
+  "typer==0.26.7",
+  "rich==15.0.0",
+  "jinja2==3.1.6",
+  "jsonschema==4.26.0",
+  "pyyaml==6.0.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/lfreleng-actions/github-security-report-action"
+Repository = "https://github.com/lfreleng-actions/github-security-report-action"
+Issues = "https://github.com/lfreleng-actions/github-security-report-action/issues"
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.0.3",
+  "pytest-asyncio==1.4.0",
+  "pytest-cov==7.1.0",
+  "respx==0.23.1",
+  "syrupy==5.3.1",
+  "mypy==2.1.0",
+  "ruff==0.15.16",
+  "types-jsonschema==4.26.0.20260518",
+  "types-PyYAML==6.0.12.20250915",
+]
+
+[project.scripts]
+github-security-report = "github_security_report.cli:app"
+
+# Hatch dynamic versioning from VCS tags (e.g. v0.1.0 -> 0.1.0)
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+local_scheme = "no-local-version"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/github_security_report/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/github_security_report"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "README.md", "LICENSE*", "pyproject.toml"]
+
+[dependency-groups]
+dev = [
+  "pytest==9.0.3",
+  "pytest-asyncio==1.4.0",
+  "pytest-cov==7.1.0",
+  "respx==0.23.1",
+  "syrupy==5.3.1",
+  "mypy==2.1.0",
+  "ruff==0.15.16",
+  "types-jsonschema==4.26.0.20260518",
+  "types-PyYAML==6.0.12.20250915",
+]
+
+[tool.uv]
+# Supply-chain cooldown: refuse to resolve anything published in the last
+# 7 days, giving the community time to catch a compromised release.
+exclude-newer = "7 days"
+
+[tool.uv.pip]
+# Verify any per-package hashes that are present (e.g. when resolving the
+# locked dependencies). 'require-hashes' is deliberately NOT enabled: it would
+# demand a hash for every requirement including this project itself, which has
+# no hash when installed from source (uv pip install .[test,dev]), breaking the
+# editable/source installs the CI test and SBOM jobs rely on. Reproducibility
+# and supply-chain resistance come from the exact '==' pins, the 7-day
+# exclude-newer cooldown, and the hash-verified uv.lock consumed by uv sync.
+verify-hashes = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests/"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = [
+  "-v",
+  "--tb=short",
+]
+asyncio_mode = "auto"
+markers = [
+  "slow: marks tests as slow",
+]
+
+[tool.coverage.run]
+source = ["github_security_report"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+exclude = ["src/github_security_report/_version.py"]
+
+[tool.basedpyright]
+pythonVersion = "3.10"
+pythonPlatform = "All"
+typeCheckingMode = "standard"
+exclude = ["src/github_security_report/_version.py"]
+# Third-party imports cannot be resolved in the pre-commit.ci sandbox.
+reportMissingImports = false
+reportMissingModuleSource = false
+reportMissingTypeStubs = false
+# Typer uses Option() calls in parameter defaults by design.
+reportCallInDefaultInitializer = false
+reportUnusedParameter = false
+reportUnusedCallResult = false
+reportPrivateUsage = false
+reportAny = false
+reportExplicitAny = false
+reportUnknownParameterType = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownLambdaType = false
+reportUnknownArgumentType = false
+reportMissingParameterType = false
+reportUnannotatedClassAttribute = false
+reportImplicitStringConcatenation = false
+reportImplicitOverride = false
+reportUnnecessaryIsInstance = false
+reportUnnecessaryComparison = false
+reportUnreachable = false
+reportConstantRedefinition = false
+reportAttributeAccessIssue = false
+reportOperatorIssue = false
+reportIndexIssue = false
+reportArgumentType = false
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+exclude = ["src/github_security_report/_version.py"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM"]
+ignore = [
+  "E501",  # line length handled by formatter
+  "B008",  # function calls in argument defaults (Typer pattern)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/**/*" = ["S101"]

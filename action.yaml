@@ -1,46 +1,185 @@
 ---
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-FileCopyrightText: 2025 The Linux Foundation
+# SPDX-FileCopyrightText: 2026 The Linux Foundation
 
-# actions-template
-name: "🛠️ Actions Template"
-description: "Description of action"
-# Any relevant notes/observations can go here
+name: "🔐 GitHub Security Report"
+description: "Security and quality reporting across GitHub organisations"
 
 inputs:
-  input:
-    description: "Description of input"
-    required: true
+  scope:
+    description: "Operating mode: auto | org | repo"
+    required: false
+    default: "auto"
+  config:
+    description: "JSON config (raw or base64), e.g. a vars/secrets entry"
+    required: false
+    default: ""
+  org:
+    description: "Single organisation (shorthand for org mode)"
+    required: false
+    default: ""
+  repo:
+    description: "owner/name for repo mode (defaults to this repository)"
+    required: false
+    default: ""
+  token:
+    description: "GitHub token (classic PAT for org mode; GITHUB_TOKEN for repo mode)"
+    required: false
+    default: ""
+  token_env:
+    description: "Environment variable name the tool reads the token from"
+    required: false
+    default: "GITHUB_TOKEN"
+  output_dir:
+    description: "Directory for GitHub Pages output (org mode)"
+    required: false
+    default: ""
+  pages_url:
+    description: "Published GitHub Pages URL (used in the Slack link)"
+    required: false
+    default: ""
+  slack_channel:
+    description: "Slack channel ID; overrides the config slack.channel (e.g. the SLACK_CHANNEL_ID variable)"
+    required: false
+    default: ""
+  top_n:
+    description: "Offenders shown per signal across all outputs (default: config, else 10); per-output inputs below override it"
+    required: false
+    default: ""
+  top_n_report:
+    description: "Offenders shown per signal in the GitHub Pages output (overrides top_n)"
+    required: false
+    default: ""
+  top_n_cli:
+    description: "Offenders shown per signal in the terminal output (overrides top_n)"
+    required: false
+    default: ""
+  top_n_slack:
+    description: "Offenders shown per signal in the Slack digest (overrides top_n)"
+    required: false
+    default: ""
+  fail_threshold:
+    description: "none | low | medium | high | critical | any (repo mode gate)"
+    required: false
+    default: "none"
+  force_notify:
+    description: "Post to Slack regardless of report_day"
+    required: false
+    default: "false"
+  tool_version:
+    description: "Published PyPI version to run (ignored on pull_request, which runs from source)"
+    required: false
+    default: "0.1.0"
+  use_local_source:
+    description: "Run from this checked-out source instead of the PyPI release (for testing unreleased code from any event)"
+    required: false
+    default: "false"
 
 outputs:
-  output:
-    description: "Description of output"
-    value: ${{ steps.code.outputs.output }}
+  should_notify:
+    description: "Whether today is a Slack notification day"
+    value: ${{ steps.run.outputs.should_notify }}
+  slack_payload:
+    description: "Prebuilt Slack chat.postMessage payload (JSON)"
+    value: ${{ steps.run.outputs.slack_payload }}
+  failed:
+    description: "Whether the repo-mode fail threshold was met"
+    value: ${{ steps.run.outputs.failed }}
 
 runs:
   using: "composite"
   steps:
-    - name: "Friendly Name"
-      id: code
+    - name: "Set up uv"
+      # yamllint disable-line rule:line-length
+      uses: astral-sh/setup-uv@803947b9bd8e9f986429fa0c5a41c367cd732b41  # v7.2.1
+
+    - name: "Run github-security-report"
+      id: run
       shell: bash
       env:
-        INPUT_VALUE: ${{ inputs.input }}
+        # Expose the token under the configured environment-variable name so
+        # the tool resolves it by name (per-org token_env, default GITHUB_TOKEN).
+        TOKEN_ENV: ${{ inputs.token_env }}
+        # Input defaults are literal strings, so the github.token fallback is
+        # applied here in env: where the expression is evaluated.
+        TOKEN_VALUE: ${{ inputs.token || github.token }}
+        # The explicitly-supplied token (empty when the caller relied on the
+        # github.token fallback); used to fail fast for org mode below.
+        INPUT_TOKEN: ${{ inputs.token }}
+        INPUT_SCOPE: ${{ inputs.scope }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_ORG: ${{ inputs.org }}
+        INPUT_REPO: ${{ inputs.repo }}
+        INPUT_OUTPUT_DIR: ${{ inputs.output_dir }}
+        INPUT_PAGES_URL: ${{ inputs.pages_url }}
+        INPUT_SLACK_CHANNEL: ${{ inputs.slack_channel }}
+        INPUT_TOP_N: ${{ inputs.top_n }}
+        INPUT_TOP_N_REPORT: ${{ inputs.top_n_report }}
+        INPUT_TOP_N_CLI: ${{ inputs.top_n_cli }}
+        INPUT_TOP_N_SLACK: ${{ inputs.top_n_slack }}
+        INPUT_FAIL_THRESHOLD: ${{ inputs.fail_threshold }}
+        INPUT_FORCE_NOTIFY: ${{ inputs.force_notify }}
+        TOOL_VERSION: ${{ inputs.tool_version }}
+        USE_LOCAL_SOURCE: ${{ inputs.use_local_source }}
+        EVENT_NAME: ${{ github.event_name }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
-        # Friendly Name
-        input="$INPUT_VALUE"
-        if [ -z "$input" ]; then
-          echo "Error: mandatory input was not set/configured ❌"
+        # Run github-security-report
+        # Validate token_env is a strict shell identifier before exporting,
+        # so a malformed or crafted name cannot affect shell behaviour.
+        if ! printf '%s' "$TOKEN_ENV" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*$'; then
+          echo "Error: token_env '$TOKEN_ENV' is not a valid environment-variable name" >&2
+          exit 1
+        fi
+        # Refuse to clobber reserved runner/Actions variables: exporting the
+        # token into e.g. PATH or GITHUB_OUTPUT would break command resolution
+        # or the tool's output/summary writing. GITHUB_TOKEN is the legitimate
+        # default target and is intentionally not on the deny-list. -x anchors
+        # the match to the whole name.
+        # yamllint disable-line rule:line-length
+        reserved='PATH|HOME|IFS|GITHUB_ENV|GITHUB_PATH|GITHUB_OUTPUT|GITHUB_STATE|GITHUB_STEP_SUMMARY|GITHUB_ACTION_PATH|GITHUB_WORKSPACE|RUNNER_TEMP|RUNNER_OS|RUNNER_ARCH|LD_PRELOAD|LD_LIBRARY_PATH'
+        if printf '%s' "$TOKEN_ENV" | grep -Eqx "$reserved"; then
+          echo "Error: token_env '$TOKEN_ENV' is a reserved variable name" >&2
+          exit 1
+        fi
+        export "${TOKEN_ENV}=${TOKEN_VALUE}"
+
+        # Org mode needs a classic PAT with org-level security scopes; the
+        # ephemeral github.token is repo-scoped and 403s on org endpoints,
+        # producing an empty/partial report. Fail fast at the action boundary
+        # when org mode is selected without an explicit token, rather than
+        # silently degrading. Explicit 'repo' scope is always repo mode (a
+        # config there only overrides report settings), so it is exempt.
+        if [ -z "$INPUT_TOKEN" ] && [ "$INPUT_SCOPE" != "repo" ] && \
+            { [ "$INPUT_SCOPE" = "org" ] || [ -n "$INPUT_ORG" ] || \
+              [ -n "$INPUT_CONFIG" ]; }; then
+          echo "Error: org mode requires an explicit 'token' input (a classic" \
+            "PAT with org security scopes); the default github.token is" \
+            "repo-scoped and cannot read org-level security data." >&2
           exit 1
         fi
 
-        # Write the output using the multiline heredoc format with a random
-        # delimiter so that an input containing newlines cannot inject
-        # additional keys into $GITHUB_OUTPUT (output-file injection).
-        delimiter="ghadelim_$(openssl rand -hex 16 2>/dev/null || date +%s%N)"
-        {
-          printf '%s<<%s\n' 'output' "$delimiter"
-          printf '%s\n' "$input"
-          printf '%s\n' "$delimiter"
-        } >> "$GITHUB_OUTPUT"
-        echo "Action received: $input ✅"
-        echo "Action received: $input ✅" >> "$GITHUB_STEP_SUMMARY"
+        # Hybrid runtime: pull requests (or an explicit use_local_source
+        # toggle, for testing) exercise the checked-out source so unreleased
+        # code runs; everything else runs the pinned PyPI release.
+        if [ "$EVENT_NAME" = "pull_request" ] || [ "$USE_LOCAL_SOURCE" = "true" ]; then
+          SOURCE="$ACTION_PATH"
+        else
+          SOURCE="github-security-report==${TOOL_VERSION}"
+        fi
+
+        args=(report --scope "$INPUT_SCOPE" --token-env "$TOKEN_ENV" --no-color)
+        [ -n "$INPUT_CONFIG" ] && args+=(--config-data "$INPUT_CONFIG")
+        [ -n "$INPUT_ORG" ] && args+=(--org "$INPUT_ORG")
+        [ -n "$INPUT_REPO" ] && args+=(--repo "$INPUT_REPO")
+        [ -n "$INPUT_OUTPUT_DIR" ] && args+=(--output-dir "$INPUT_OUTPUT_DIR")
+        [ -n "$INPUT_PAGES_URL" ] && args+=(--pages-url "$INPUT_PAGES_URL")
+        [ -n "$INPUT_SLACK_CHANNEL" ] && args+=(--slack-channel "$INPUT_SLACK_CHANNEL")
+        [ -n "$INPUT_TOP_N" ] && args+=(--top-n "$INPUT_TOP_N")
+        [ -n "$INPUT_TOP_N_REPORT" ] && args+=(--top-n-report "$INPUT_TOP_N_REPORT")
+        [ -n "$INPUT_TOP_N_CLI" ] && args+=(--top-n-cli "$INPUT_TOP_N_CLI")
+        [ -n "$INPUT_TOP_N_SLACK" ] && args+=(--top-n-slack "$INPUT_TOP_N_SLACK")
+        [ -n "$INPUT_FAIL_THRESHOLD" ] && args+=(--fail-threshold "$INPUT_FAIL_THRESHOLD")
+        [ "$INPUT_FORCE_NOTIFY" = "true" ] && args+=(--force-notify)
+
+        uvx --from "$SOURCE" github-security-report "${args[@]}"

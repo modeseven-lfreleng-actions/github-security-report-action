@@ -1,0 +1,35 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Linux Foundation
+
+# Runs on a new pull request, performs build and runs tests
+name: 'Python Build/Test'
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches:
+      - main
+      - master
+    paths:
+      - '**'
+      - '!.github/**'
+      - '!.*'
+      - '!tox.ini'
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  build-test:
+    permissions:
+      contents: read
+      pull-requests: read
+    # Pinned to python-workflows v0.1.0 release commit
+    # yamllint disable-line rule:line-length
+    uses: lfreleng-actions/python-workflows/.github/workflows/build-test.yaml@518ac92728ff987d1f0edab163b1e328fd7258d7  # v0.1.0
