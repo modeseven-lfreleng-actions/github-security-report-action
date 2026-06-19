@@ -44,29 +44,81 @@ _GRAPH_BATCH = 25
 class ClientProtocol(Protocol):
     """The subset of :class:`client.GitHubClient` that orchestration needs."""
 
-    async def list_org_repos(self, org: str) -> tuple[int, list[Repo]]: ...
-    async def org_bulk_alerts(self, org: str, kind: str) -> tuple[int, list[dict]]: ...
-    async def org_workflow_rulesets(self, org: str) -> tuple[int, list[dict]]: ...
-    async def code_scanning_tools(self, org: str, repo: str) -> tuple[int, set[str]]: ...
-    async def secret_scanning_status(self, org: str, repo: str) -> int: ...
-    async def scorecard_score(self, org: str, repo: str) -> tuple[int, float | None]: ...
-    async def automated_security_fixes(self, org: str, repo: str) -> bool | None: ...
+    async def list_org_repos(self, org: str) -> tuple[int, list[Repo]]:
+        """List an organisation's repositories with the read status."""
+        raise NotImplementedError
+
+    async def org_bulk_alerts(self, org: str, kind: str) -> tuple[int, list[dict]]:
+        """Fetch an organisation's alerts of one kind in a single sweep."""
+        raise NotImplementedError
+
+    async def org_workflow_rulesets(self, org: str) -> tuple[int, list[dict]]:
+        """Fetch the organisation's workflow rulesets."""
+        raise NotImplementedError
+
+    async def code_scanning_tools(self, org: str, repo: str) -> tuple[int, set[str]]:
+        """Return the code-scanning tools enabled on a repository."""
+        raise NotImplementedError
+
+    async def secret_scanning_status(self, org: str, repo: str) -> int:
+        """Return the secret-scanning read status for a repository."""
+        raise NotImplementedError
+
+    async def scorecard_score(self, org: str, repo: str) -> tuple[int, float | None]:
+        """Return a repository's OpenSSF Scorecard score and read status."""
+        raise NotImplementedError
+
+    async def automated_security_fixes(self, org: str, repo: str) -> bool | None:
+        """Whether Dependabot automated security fixes are enabled."""
+        raise NotImplementedError
+
     async def repo_graph_batch(
         self, org: str, names: list[str]
-    ) -> dict[str, RepoGraphData]: ...
+    ) -> dict[str, RepoGraphData]:
+        """Fetch batched per-repo GraphQL data keyed by repository name."""
+        raise NotImplementedError
 
 
 class RepoClientProtocol(Protocol):
     """Extra per-repo methods needed for repo mode."""
 
-    async def get_repo(self, org: str, repo: str) -> Repo | None: ...
-    async def code_scanning_tools(self, org: str, repo: str) -> tuple[int, set[str]]: ...
-    async def repo_code_scanning_alerts(self, org: str, repo: str) -> tuple[int, list[dict]]: ...
-    async def repo_secret_scanning(self, org: str, repo: str) -> tuple[int, int]: ...
-    async def dependabot_enabled(self, org: str, repo: str) -> bool | None: ...
-    async def repo_dependabot_alerts(self, org: str, repo: str) -> tuple[int, list[dict]]: ...
-    async def repo_branch_rules(self, org: str, repo: str, branch: str) -> tuple[int, list[dict]]: ...
-    async def scorecard_score(self, org: str, repo: str) -> tuple[int, float | None]: ...
+    async def get_repo(self, org: str, repo: str) -> Repo | None:
+        """Fetch a single repository, or None when it is absent."""
+        raise NotImplementedError
+
+    async def code_scanning_tools(self, org: str, repo: str) -> tuple[int, set[str]]:
+        """Return the code-scanning tools enabled on a repository."""
+        raise NotImplementedError
+
+    async def repo_code_scanning_alerts(
+        self, org: str, repo: str
+    ) -> tuple[int, list[dict]]:
+        """Fetch a repository's code-scanning alerts with the read status."""
+        raise NotImplementedError
+
+    async def repo_secret_scanning(self, org: str, repo: str) -> tuple[int, int]:
+        """Return a repository's secret-scanning status and open count."""
+        raise NotImplementedError
+
+    async def dependabot_enabled(self, org: str, repo: str) -> bool | None:
+        """Whether Dependabot alerts are enabled for a repository."""
+        raise NotImplementedError
+
+    async def repo_dependabot_alerts(
+        self, org: str, repo: str
+    ) -> tuple[int, list[dict]]:
+        """Fetch a repository's Dependabot alerts with the read status."""
+        raise NotImplementedError
+
+    async def repo_branch_rules(
+        self, org: str, repo: str, branch: str
+    ) -> tuple[int, list[dict]]:
+        """Fetch the branch-protection rules for a repository branch."""
+        raise NotImplementedError
+
+    async def scorecard_score(self, org: str, repo: str) -> tuple[int, float | None]:
+        """Return a repository's OpenSSF Scorecard score and read status."""
+        raise NotImplementedError
 
 
 def _group_by_repo(alerts: list[dict]) -> dict[str, list[dict]]:
