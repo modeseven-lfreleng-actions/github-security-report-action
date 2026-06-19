@@ -81,7 +81,7 @@ def test_alerts_table_lists_disabled_sorted() -> None:
         posture.RepoPosture(repo=_repo("dunno"), dependabot_alerts=None),
     ]
     table = posture.build_alerts_table(postures)
-    assert table.title == "Alerts Not Enabled"
+    assert table.title == "Dependabot: Alerts"
     assert table.columns == ("Repository",)
     assert [r.repo.name for r in table.rows] == ["alpha", "zeta"]
     # The indeterminate (None) repo counts towards neither side of the summary.
@@ -94,7 +94,12 @@ def test_alerts_table_empty_has_note_only() -> None:
         [posture.RepoPosture(repo=_repo("on"), dependabot_alerts=True)]
     )
     assert table.rows == []
-    assert table.empty_note
+    # With nothing disabled the summary drops the zero negative count and the
+    # note reads positively.
+    assert table.summary == "1 enabled"
+    assert table.empty_note == (
+        "All in-scope repositories have Dependabot alerts enabled."
+    )
 
 
 def test_security_updates_table_lists_disabled_sorted() -> None:
@@ -109,6 +114,20 @@ def test_security_updates_table_lists_disabled_sorted() -> None:
     assert [r.repo.name for r in table.rows] == ["a", "b"]
     assert table.summary == "2 not enabled, 1 enabled"
     assert table.note
+
+
+def test_security_updates_table_all_enabled_summary() -> None:
+    table = posture.build_security_updates_table(
+        [
+            posture.RepoPosture(repo=_repo("a"), security_updates=True),
+            posture.RepoPosture(repo=_repo("b"), security_updates=True),
+        ]
+    )
+    assert table.rows == []
+    assert table.summary == "2 enabled"
+    assert table.empty_note == (
+        "All in-scope repositories have Dependabot security updates enabled."
+    )
 
 
 def test_cooldown_table_lists_repos_missing_cooldown() -> None:
@@ -126,6 +145,22 @@ def test_cooldown_table_lists_repos_missing_cooldown() -> None:
     assert table.summary == "1 without cooldown, 1 with cooldown"
 
 
+def test_cooldown_table_all_with_cooldown_summary() -> None:
+    # With nothing missing a cooldown, the zero negative is dropped.
+    postures = [
+        posture.RepoPosture(
+            repo=_repo("a"), cooldown_missing=(), has_dependabot_config=True
+        ),
+        posture.RepoPosture(
+            repo=_repo("b"), cooldown_missing=(), has_dependabot_config=True
+        ),
+    ]
+    table = posture.build_cooldown_table(postures)
+    assert table.rows == []
+    assert table.summary == "2 with cooldown"
+    assert table.empty_note
+
+
 def test_dependabot_tables_order_and_titles() -> None:
     postures = [
         posture.RepoPosture(
@@ -137,7 +172,7 @@ def test_dependabot_tables_order_and_titles() -> None:
     ]
     tables = posture.build_dependabot_tables(postures)
     assert [t.title for t in tables] == [
-        "Alerts Not Enabled",
+        "Dependabot: Alerts",
         "Dependabot: Security Updates",
         "Dependabot: Cooldown Settings",
     ]
@@ -297,7 +332,7 @@ def test_mutable_releases_immutable_latest_is_clean() -> None:
     ]
     table = posture.build_mutable_releases_table(postures)
     assert table.rows == []
-    assert table.summary == "0 with findings, 1 clean"
+    assert table.summary == "1 clean"
     assert table.empty_note
 
 

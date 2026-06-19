@@ -125,6 +125,18 @@ def _age_cell(age: int | None) -> str:
     return f"{age} days ago"
 
 
+def _posture_summary(bad: int, bad_label: str, good: int, good_label: str) -> str:
+    """Heading summary for a posture table with one bad/good axis.
+
+    When the bad count is zero there is no negative worth showing, so only the
+    positive (good) count is reported (e.g. ``"84 enabled"`` rather than
+    ``"0 not enabled, 84 enabled"``).
+    """
+    if bad == 0:
+        return f"{good} {good_label}"
+    return f"{bad} {bad_label}, {good} {good_label}"
+
+
 def build_alerts_table(postures: list[RepoPosture]) -> TableSection:
     """Repositories where Dependabot vulnerability alerts are not enabled."""
     rows = [
@@ -135,15 +147,15 @@ def build_alerts_table(postures: list[RepoPosture]) -> TableSection:
     not_enabled = sum(1 for p in postures if p.dependabot_alerts is False)
     enabled = sum(1 for p in postures if p.dependabot_alerts is True)
     return TableSection(
-        title="Alerts Not Enabled",
+        title="Dependabot: Alerts",
         columns=("Repository",),
         rows=rows,
-        empty_note="No in-scope repository has Dependabot alerts confirmed disabled.",
+        empty_note="All in-scope repositories have Dependabot alerts enabled.",
         note=(
             "Dependabot security alerts are disabled on these repositories; "
             "enable them so vulnerable dependencies are reported."
         ),
-        summary=f"{not_enabled} not enabled, {enabled} enabled",
+        summary=_posture_summary(not_enabled, "not enabled", enabled, "enabled"),
     )
 
 
@@ -161,15 +173,15 @@ def build_security_updates_table(postures: list[RepoPosture]) -> TableSection:
         columns=("Repositories NOT Enabled",),
         rows=rows,
         empty_note=(
-            "No in-scope repository has Dependabot security updates confirmed "
-            "disabled."
+            "All in-scope repositories have Dependabot security updates "
+            "enabled."
         ),
         note=(
             "Dependabot security updates are disabled on these repositories; "
             "enable them so fixes for vulnerable dependencies are proposed "
             "automatically."
         ),
-        summary=f"{not_enabled} not enabled, {enabled} enabled",
+        summary=_posture_summary(not_enabled, "not enabled", enabled, "enabled"),
     )
 
 
@@ -195,7 +207,9 @@ def build_cooldown_table(postures: list[RepoPosture]) -> TableSection:
             "A cooldown is mandatory; any cooldown value passes. Repositories "
             "with no Dependabot configuration are not listed here."
         ),
-        summary=f"{missing} without cooldown, {with_cooldown} with cooldown",
+        summary=_posture_summary(
+            missing, "without cooldown", with_cooldown, "with cooldown"
+        ),
     )
 
 
@@ -329,7 +343,9 @@ def build_mutable_releases_table(postures: list[RepoPosture]) -> TableSection:
             "immutable."
         ),
         note="Recent releases in the repositories above are not immutable.",
-        summary=f"{finding_count} with findings, {clean_count} clean",
+        summary=_posture_summary(
+            finding_count, "with findings", clean_count, "clean"
+        ),
     )
 
 
