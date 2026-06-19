@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+from dataclasses import replace
 from typing import cast
 
 import httpx
@@ -50,9 +51,10 @@ _CODE_SCANNING_SIGNAL_TOOLS = ("CodeQL", "Scorecard", "zizmor")
 # Batched per-repo prefetch. One aliased query fetches, for many repositories
 # at once: Dependabot-alerts enablement, the most-recent tag's commit date
 # (a tag's target is a Commit (lightweight) or a Tag object (annotated) whose
-# own target is the Commit -- both branches are read), recent releases with
-# their immutability, and the raw .github/dependabot.yml. This replaces the
-# former per-repo latest-release (REST), latest-tag (GraphQL), dependabot.yml
+# own target is the Commit -- both branches are read), the authoritative
+# latest release plus a window of recent releases with their immutability, and
+# the raw .github/dependabot.yml. This replaces the former per-repo
+# latest-release (REST), latest-tag (GraphQL), dependabot.yml
 # (REST) and Dependabot-enabled (GraphQL) round-trips.
 _REPO_GRAPH_FRAGMENT = """\
 fragment RepoData on Repository {
@@ -70,7 +72,10 @@ fragment RepoData on Repository {
       }
     }
   }
-  releases(first: 10, orderBy: {field: CREATED_AT, direction: DESC}) {
+  latestRelease {
+    tagName isLatest isPrerelease isDraft immutable publishedAt createdAt
+  }
+  releases(first: 25, orderBy: {field: CREATED_AT, direction: DESC}) {
     nodes {
       tagName isLatest isPrerelease isDraft immutable publishedAt createdAt
     }
@@ -143,19 +148,37 @@ def _last_published(refs: list[ReleaseRef]) -> ReleaseRef | None:
 
 
 def _parse_repo_node(node: dict) -> RepoGraphData:
-    """Map one repository alias from the batched query to ``RepoGraphData``."""
+    """Map one repository alias from the batched query to ``RepoGraphData``.
+
+    The "Latest" release is taken from GitHub's authoritative ``latestRelease``
+    field rather than scanning the bounded ``releases`` window: a repository
+    with many newer draft or pre-release entries could otherwise push the
+    ``isLatest`` release out of the window, dropping it from staleness and the
+    Mutable Releases findings. The window still feeds the last-published
+    computation, with the latest ref folded in (deduplicated by tag).
+    """
     enabled_raw = node.get("hasVulnerabilityAlertsEnabled")
     enabled = bool(enabled_raw) if enabled_raw is not None else None
     config_obj = node.get("dependabotConfig")
     config_text = config_obj.get("text") if isinstance(config_obj, dict) else None
-    refs = _release_refs((node.get("releases") or {}).get("nodes") or [])
-    latest = next((r for r in refs if r.is_latest), None)
+    window = _release_refs((node.get("releases") or {}).get("nodes") or [])
+    latest_node = node.get("latestRelease")
+    latest: ReleaseRef | None = None
+    if isinstance(latest_node, dict):
+        parsed = _release_refs([latest_node])
+        if parsed:
+            # Force the "Latest" badge: latestRelease is authoritative even
+            # when the node's own isLatest flag is absent or stale.
+            latest = replace(parsed[0], is_latest=True)
+    candidates = list(window)
+    if latest is not None and all(r.tag != latest.tag for r in candidates):
+        candidates.append(latest)
     return RepoGraphData(
         dependabot_alerts_enabled=enabled,
         latest_tag_at=_tag_committed_date(node.get("tags")),
         latest_release_at=latest.published_at if latest else None,
         latest_release=latest,
-        last_published_release=_last_published(refs),
+        last_published_release=_last_published(candidates),
         dependabot_config=config_text,
     )
 

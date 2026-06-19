@@ -146,11 +146,17 @@ def build_alerts_table(postures: list[RepoPosture]) -> TableSection:
     ]
     not_enabled = sum(1 for p in postures if p.dependabot_alerts is False)
     enabled = sum(1 for p in postures if p.dependabot_alerts is True)
+    indeterminate = sum(1 for p in postures if p.dependabot_alerts is None)
     return TableSection(
         title="Dependabot: Alerts",
         columns=("Repository",),
         rows=rows,
-        empty_note="All in-scope repositories have Dependabot alerts enabled.",
+        empty_note=(
+            "All in-scope repositories have Dependabot alerts enabled."
+            if indeterminate == 0
+            else "No in-scope repository has Dependabot alerts confirmed "
+            "disabled."
+        ),
         note=(
             "Dependabot security alerts are disabled on these repositories; "
             "enable them so vulnerable dependencies are reported."
@@ -168,6 +174,7 @@ def build_security_updates_table(postures: list[RepoPosture]) -> TableSection:
     ]
     not_enabled = sum(1 for p in postures if p.security_updates is False)
     enabled = sum(1 for p in postures if p.security_updates is True)
+    indeterminate = sum(1 for p in postures if p.security_updates is None)
     return TableSection(
         title="Dependabot: Security Updates",
         columns=("Repositories NOT Enabled",),
@@ -175,6 +182,9 @@ def build_security_updates_table(postures: list[RepoPosture]) -> TableSection:
         empty_note=(
             "All in-scope repositories have Dependabot security updates "
             "enabled."
+            if indeterminate == 0
+            else "No in-scope repository has Dependabot security updates "
+            "confirmed disabled."
         ),
         note=(
             "Dependabot security updates are disabled on these repositories; "

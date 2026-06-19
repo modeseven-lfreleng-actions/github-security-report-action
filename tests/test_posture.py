@@ -102,6 +102,22 @@ def test_alerts_table_empty_has_note_only() -> None:
     )
 
 
+def test_alerts_table_empty_with_indeterminate_is_not_assertive() -> None:
+    # No repo is explicitly disabled, so the table is empty -- but an
+    # indeterminate (None) repo means we cannot claim every repo is enabled.
+    table = posture.build_alerts_table(
+        [
+            posture.RepoPosture(repo=_repo("on"), dependabot_alerts=True),
+            posture.RepoPosture(repo=_repo("dunno"), dependabot_alerts=None),
+        ]
+    )
+    assert table.rows == []
+    assert table.summary == "1 enabled"
+    assert table.empty_note == (
+        "No in-scope repository has Dependabot alerts confirmed disabled."
+    )
+
+
 def test_security_updates_table_lists_disabled_sorted() -> None:
     postures = [
         posture.RepoPosture(repo=_repo("b"), security_updates=False),
@@ -127,6 +143,22 @@ def test_security_updates_table_all_enabled_summary() -> None:
     assert table.summary == "2 enabled"
     assert table.empty_note == (
         "All in-scope repositories have Dependabot security updates enabled."
+    )
+
+
+def test_security_updates_table_empty_with_indeterminate() -> None:
+    # An indeterminate (None) repo with nothing explicitly disabled must not
+    # claim that every repo has security updates enabled.
+    table = posture.build_security_updates_table(
+        [
+            posture.RepoPosture(repo=_repo("a"), security_updates=True),
+            posture.RepoPosture(repo=_repo("dunno"), security_updates=None),
+        ]
+    )
+    assert table.rows == []
+    assert table.summary == "1 enabled"
+    assert table.empty_note == (
+        "No in-scope repository has Dependabot security updates confirmed disabled."
     )
 
 

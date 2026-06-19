@@ -190,7 +190,15 @@ def scope_reason(repo: RepoMeta, plan: Plan) -> str | None:
 
 
 def current_state(client: httpx.Client, org: str, repo: str) -> tuple[str, str]:
-    """Return (state, note) where state is enabled/disabled/unknown."""
+    """Return (state, note) where state is enabled/disabled/unknown.
+
+    A 404 from this endpoint usually means Dependabot alerts (the prerequisite
+    for security updates) are not enabled -- i.e. security updates are off,
+    which is exactly what this script remediates. It is therefore treated as
+    ``disabled`` so the enable path runs; a genuinely missing or forbidden
+    repository will instead surface as a failed write from ``enable()``. A 403
+    is a real permission problem (the write would fail too) and stays unknown.
+    """
     resp = client.get(f"/repos/{org}/{repo}/automated-security-fixes")
     if resp.status_code == 200:
         body = resp.json()
@@ -199,7 +207,7 @@ def current_state(client: httpx.Client, org: str, repo: str) -> tuple[str, str]:
         note = "paused" if (enabled and paused) else ""
         return ("enabled" if enabled else "disabled", note)
     if resp.status_code == 404:
-        return ("unknown", "404 (no access or repo missing)")
+        return ("disabled", "no automated-security-fixes (alerts off?)")
     if resp.status_code == 403:
         return ("unknown", "403 (insufficient permission)")
     return ("unknown", f"{resp.status_code} {resp.text[:80]}")
@@ -342,7 +350,7 @@ def build_plan(args: argparse.Namespace) -> Plan:
         raise SystemExit("Provide --config or --org.")
     return Plan(
         org=plan.org,
-        exclude=plan.exclude | set(args.exclude),
+        exclude=frozenset(plan.exclude | set(args.exclude)),
         include_archived=plan.include_archived or args.include_archived,
         include_test=plan.include_test or args.include_test,
         include_empty=plan.include_empty or args.include_empty,
