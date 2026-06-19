@@ -65,10 +65,19 @@ Repo mode needs nothing beyond the workflow's ephemeral `GITHUB_TOKEN`. Org mode
 needs a Personal Access Token; choose **one** of the two options below depending
 on how many organisations the report covers.
 
-All required access is **read-only**. The tool degrades any read it is not
-permitted to make to an "unknown" status rather than reporting a repository as
-clean, so an under-scoped token surfaces as unknowns in the report instead of
+Almost all required access is **read-only**. The tool degrades any read it is
+not permitted to make to an "unknown" status rather than reporting a repository
+as clean, so an under-scoped token surfaces as unknowns in the report instead of
 silently wrong results — start minimal and widen if you see unknowns.
+
+The **one** exception is organisation-ruleset coverage. GitHub gates the
+org-rulesets endpoint behind an org-admin permission (classic `admin:org` scope,
+or fine-grained Administration **write**), even though the tool only reads it.
+That coverage is **optional**: it detects tools enforced through an org ruleset
+(for example a required-workflow or code-scanning ruleset). Without it that one
+signal is skipped and every other part of the report is unaffected, so the
+minimal tokens below omit it. Grant the org-admin permission only if you want
+ruleset-based tool coverage.
 
 ### Single organisation — fine-grained PAT
 
@@ -87,14 +96,15 @@ organisation and **Repository access** set to *All repositories*, then grant:
 | Secret scanning alerts | Open secret-scanning alerts |
 | Administration | Dependabot enablement + security-updates status, and effective branch rules |
 
-**Organization permissions** (Read-only):
+**Organization permissions:**
 
-| Permission | Used for |
-| ---------- | -------- |
-| Administration | Organisation rulesets (detect tools enabled via a required workflow) |
+| Permission | Access | Used for |
+| ---------- | ------ | -------- |
+| Administration | Read and write | *Optional* — organisation rulesets (detect tools enforced through an org ruleset). GitHub gates this endpoint behind Administration **write**; omit it to keep the token read-only and skip ruleset-based tool coverage. |
 
-> A fine-grained token cannot span organisations. For a report covering more
-> than one org, use a classic PAT (below).
+> Read-only is enough for everything except the optional ruleset coverage
+> above. A fine-grained token cannot span organisations. For a report covering
+> more than one org, use a classic PAT (below).
 
 ### Multiple organisations — classic PAT
 
@@ -106,7 +116,8 @@ organisations. Grant these scopes:
 | ----- | -------- |
 | `repo` | Repository data, including private repositories |
 | `security_events` | Code scanning, secret scanning, and Dependabot alerts (org-bulk and per-repo) |
-| `read:org` | Listing organisation repositories and reading organisation rulesets |
+| `read:org` | Listing organisation repositories |
+| `admin:org` | *Optional* — reading organisation rulesets for ruleset-based tool coverage. GitHub gates `GET /orgs/{org}/rulesets` behind the full `admin:org` scope; `read:org` and `write:org` return 404. Omit it to skip that one signal; everything else is unaffected. |
 
 > For organisations that enforce SSO, the PAT must be **SSO-authorised** for
 > each target organisation, or the org-level endpoints return `403` (reported as
