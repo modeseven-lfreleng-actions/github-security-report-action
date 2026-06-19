@@ -15,6 +15,7 @@ from github_security_report.report import (
     OrgReport,
     SignalSection,
     TableSection,
+    offender_column_totals,
     truncate,
 )
 
@@ -41,10 +42,35 @@ def _plain_row(sig: RepoSignal) -> list[str]:
     return [sig.repo.name, str(c.critical), str(c.high), str(c.medium), str(c.low)]
 
 
+def _plain_total_row(
+    signal: SignalType, offenders: list[RepoSignal]
+) -> list[str]:
+    """Trailing "Total" row summing the severity columns for Slack tables.
+
+    Slack's fixed-width columns omit the Total column the other surfaces carry,
+    so this matches ``_plain_row``'s shape rather than reusing the shared
+    Markdown helper. Scorecard's score is not additive and is left blank.
+    """
+    totals = offender_column_totals(offenders)
+    base = [
+        str(totals.critical),
+        str(totals.high),
+        str(totals.medium),
+        str(totals.low),
+    ]
+    if signal is SignalType.SCORECARD:
+        return ["Total", "", *base]
+    return ["Total", *base]
+
+
 def _fixed_table(section: SignalSection, top_n: int) -> str:
     cols = _plain_columns(section.signal)
     shown, hidden = truncate(section.offenders, top_n)
     rows = [_plain_row(s) for s in shown]
+    # A trailing totals row sums the additive severity columns; secret scanning
+    # has no such columns, so skip it. Summed over the shown (truncated) rows.
+    if section.signal.uses_severity_columns and shown:
+        rows.append(_plain_total_row(section.signal, shown))
     widths = [len(c) for c in cols]
     for row in rows:
         for i, cell in enumerate(row):

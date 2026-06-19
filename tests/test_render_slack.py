@@ -80,8 +80,9 @@ def test_top_n_limits_code_fence_rows() -> None:
     blocks = slack.render_org_blocks(_org(signals, count=5), top_n=2, pages_url=None)
     codeql = next(b for b in blocks if "CodeQL" in b.get("text", {}).get("text", ""))
     fence = codeql["text"]["text"].split("```")[1]
-    # header row + 2 data rows + a "… and N more" tally (5 offenders, 2 shown).
-    assert len(fence.strip().splitlines()) == 4
+    # header + 2 data rows + a Total row + a "… and N more" tally (5 offenders,
+    # 2 shown).
+    assert len(fence.strip().splitlines()) == 5
     assert "… and 3 more" in fence
 
 
@@ -154,3 +155,39 @@ def test_empty_extra_tables_are_skipped() -> None:
     texts = [b.get("text", {}).get("text", "") for b in blocks]
     assert not any("Enablement" in t for t in texts)
     assert not any("Releases / Tagging" in t for t in texts)
+
+
+def test_offender_table_has_totals_row() -> None:
+    signals = [
+        RepoSignal(
+            _repo("a"),
+            SignalType.CODEQL,
+            RepoState.OFFENDER,
+            SeverityCounts(critical=1, high=2, medium=3, low=4),
+        ),
+        RepoSignal(
+            _repo("b"),
+            SignalType.CODEQL,
+            RepoState.OFFENDER,
+            SeverityCounts(critical=1, high=1, medium=1, low=1),
+        ),
+    ]
+    blocks = slack.render_org_blocks(_org(signals, count=2), top_n=10, pages_url=None)
+    codeql = next(b for b in blocks if "CodeQL" in b["text"]["text"])
+    fence = codeql["text"]["text"].split("```")[1]
+    total_line = next(line for line in fence.splitlines() if "Total" in line)
+    # Slack omits the Total column; the severity columns are summed in place.
+    assert total_line.split() == ["Total", "2", "3", "4", "5"]
+
+
+def test_secret_scanning_has_no_totals_row() -> None:
+    sig = RepoSignal(
+        _repo("leaky"),
+        SignalType.SECRET_SCANNING,
+        RepoState.OFFENDER,
+        SeverityCounts(critical=4),
+    )
+    blocks = slack.render_org_blocks(_org([sig]), top_n=10, pages_url=None)
+    heading = SignalType.SECRET_SCANNING.heading
+    secret = next(b for b in blocks if heading in b["text"]["text"])
+    assert "Total" not in secret["text"]["text"]

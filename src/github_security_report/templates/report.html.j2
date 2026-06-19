@@ -33,6 +33,7 @@
     th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid #edf2f7; }
     th { background: #f7fafc; }
     td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tfoot td { font-weight: 600; border-top: 2px solid #cbd5e0; }
     .clean { color: #2f855a; margin-top: 0.75rem; }
     .nag-title { margin-top: 1rem; font-weight: 600; color: #b7791f; }
     .nag { margin: 0.25rem 0 0 1.25rem; }
@@ -84,6 +85,11 @@
           </tr>
           {% endfor %}
         </tbody>
+        {% if s.total_cells %}
+        <tfoot>
+          <tr><td>{{ s.total_cells[0] }}</td>{% for cell in s.total_cells[1:] %}<td class="num">{{ cell }}</td>{% endfor %}</tr>
+        </tfoot>
+        {% endif %}
       </table>
       {% if s.hidden %}<p class="note">… and {{ s.hidden }} more</p>{% endif %}
       {% endif %}

@@ -143,6 +143,40 @@ class TestOrgHtml:
         assert "Excluded from analysis (1)" in out
         assert '<a href="https://github.com/o/opted-out">opted-out</a>' in out
 
+    def test_offender_table_has_totals_tfoot(self) -> None:
+        signals = [
+            RepoSignal(
+                _repo("a"),
+                SignalType.CODEQL,
+                RepoState.OFFENDER,
+                SeverityCounts(critical=1, high=2, medium=3, low=4),
+            ),
+            RepoSignal(
+                _repo("b"),
+                SignalType.CODEQL,
+                RepoState.OFFENDER,
+                SeverityCounts(critical=1, high=1, medium=1, low=1),
+            ),
+        ]
+        out = html.render_org_html(_org("o", signals, count=2))
+        # The totals render in a <tfoot> so DataTables treats them as a footer
+        # rather than paginating/sorting them as data.
+        assert "<tfoot>" in out
+        tfoot = out.split("<tfoot>", 1)[1].split("</tfoot>", 1)[0]
+        assert "<td>Total</td>" in tfoot
+        for value in ("2", "3", "4", "5", "14"):
+            assert f'<td class="num">{value}</td>' in tfoot
+
+    def test_secret_scanning_has_no_totals_tfoot(self) -> None:
+        sig = RepoSignal(
+            _repo("leaky"),
+            SignalType.SECRET_SCANNING,
+            RepoState.OFFENDER,
+            SeverityCounts(critical=4),
+        )
+        out = html.render_org_html(_org("o", [sig]))
+        assert "<tfoot>" not in out
+
 
 class TestIndexHtml:
     def test_card_per_org(self) -> None:

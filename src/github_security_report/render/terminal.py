@@ -16,6 +16,7 @@ from rich.console import Console
 from rich.table import Table
 
 from github_security_report.models import Repo, RepoSignal, SignalType
+from github_security_report.render import markdown
 from github_security_report.report import (
     OrgReport,
     SignalSection,
@@ -73,6 +74,14 @@ def render_section(
         _add_columns(table, section.signal)
         for sig in offenders:
             table.add_row(*_row(sig))
+        # A trailing totals row sums the additive severity columns across the
+        # rows shown above. Secret scanning has no such columns, so skip it.
+        if section.signal.uses_severity_columns:
+            table.add_section()
+            table.add_row(
+                *markdown.total_row_cells(section.signal, offenders),
+                style="bold",
+            )
         console.print(table)
         if hidden_offenders:
             console.print(f"  [dim]… and {hidden_offenders} more[/dim]")

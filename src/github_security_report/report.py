@@ -21,6 +21,7 @@ from github_security_report.models import (
     Repo,
     RepoSignal,
     RepoState,
+    SeverityCounts,
     SignalType,
     rank_offenders,
 )
@@ -152,6 +153,23 @@ def truncate(items: Sequence[_T], top_n: int | None) -> tuple[list[_T], int]:
     if top_n is None or top_n <= 0 or len(seq) <= top_n:
         return seq, 0
     return seq[:top_n], len(seq) - top_n
+
+
+def offender_column_totals(offenders: Sequence[RepoSignal]) -> SeverityCounts:
+    """Sum the severity columns across a set of offender rows.
+
+    Every render surface uses this to draw a trailing "Total" row beneath an
+    offender table. Only the rows passed in are summed (callers pass the
+    displayed, already-truncated set), so the totals match the visible table
+    even when an "and N more" tally hides further offenders.
+    """
+    totals = SeverityCounts()
+    for sig in offenders:
+        totals.critical += sig.counts.critical
+        totals.high += sig.counts.high
+        totals.medium += sig.counts.medium
+        totals.low += sig.counts.low
+    return totals
 
 
 def build_org_report(

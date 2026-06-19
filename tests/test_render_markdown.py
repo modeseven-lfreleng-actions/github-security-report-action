@@ -104,6 +104,64 @@ class TestSection:
         body_rows = [ln for ln in out.splitlines() if ln.startswith("| [r")]
         assert len(body_rows) == 2
 
+    def test_offender_table_has_totals_row(self) -> None:
+        signals = [
+            RepoSignal(
+                _repo("a"),
+                SignalType.CODEQL,
+                RepoState.OFFENDER,
+                SeverityCounts(critical=1, high=2, medium=3, low=4),
+            ),
+            RepoSignal(
+                _repo("b"),
+                SignalType.CODEQL,
+                RepoState.OFFENDER,
+                SeverityCounts(critical=1, high=1, medium=1, low=1),
+            ),
+        ]
+        out = markdown.render_section(_org(signals, count=2).sections[0])
+        # A trailing Total row sums each severity column plus the Total column.
+        assert "| Total | 2 | 3 | 4 | 5 | 14 |" in out
+
+    def test_scorecard_totals_row_blanks_score(self) -> None:
+        signals = [
+            RepoSignal(
+                _repo("a"),
+                SignalType.SCORECARD,
+                RepoState.OFFENDER,
+                SeverityCounts(high=2, medium=1),
+                score=6.5,
+            ),
+            RepoSignal(
+                _repo("b"),
+                SignalType.SCORECARD,
+                RepoState.OFFENDER,
+                SeverityCounts(high=1, low=1),
+                score=6.8,
+            ),
+        ]
+        section = next(
+            s
+            for s in _org(signals, count=2).sections
+            if s.signal is SignalType.SCORECARD
+        )
+        out = markdown.render_section(section)
+        # The score column is blank; the severity columns are summed.
+        assert "| Total |  | 0 | 3 | 1 | 1 |" in out
+
+    def test_secret_scanning_has_no_totals_row(self) -> None:
+        sig = RepoSignal(
+            _repo("leaky"),
+            SignalType.SECRET_SCANNING,
+            RepoState.OFFENDER,
+            SeverityCounts(critical=4),
+        )
+        section = next(
+            s for s in _org([sig]).sections if s.signal is SignalType.SECRET_SCANNING
+        )
+        out = markdown.render_section(section)
+        assert "| Total |" not in out
+
 
 class TestOrgAndReport:
     def test_org_header(self) -> None:
