@@ -135,7 +135,10 @@ def test_mutable_releases_block_shows_summary() -> None:
     blocks = slack.render_org_blocks(org, top_n=10, pages_url=None)
     texts = [b.get("text", {}).get("text", "") for b in blocks]
     block = next(t for t in texts if "Mutable Releases" in t)
-    assert "*Mutable Releases — 2 with findings, 82 clean*" in block
+    # The heading is bare; the summary is on its own line beneath the table.
+    assert "*Mutable Releases*" in block
+    assert "*Mutable Releases —" not in block
+    assert "\n2 with findings, 82 clean" in block
     assert "img" in block and "v0.1.0 (latest)" in block
 
 

@@ -105,12 +105,14 @@ def _table_block(section: TableSection, top_n: int) -> dict | None:
     table = _fixed_table_generic(section.columns, rows)
     if hidden:
         table += f"\n… and {hidden} more"
-    title = section.title
+    # The count summary is placed on its own line beneath the table rather than
+    # inline with the title, matching every other category.
+    text = f"*{section.title}*\n```\n{table}\n```"
     if section.summary:
-        title = f"{title} — {section.summary}"
+        text += f"\n{section.summary}"
     return {
         "type": "section",
-        "text": {"type": "mrkdwn", "text": f"*{title}*\n```\n{table}\n```"},
+        "text": {"type": "mrkdwn", "text": text},
     }
 
 
@@ -154,10 +156,13 @@ def render_org_blocks(org: OrgReport, *, top_n: int, pages_url: str | None) -> l
         )
     for section in org.sections:
         summary = _summary(section)
-        text = f"*{section.signal.heading}* — {summary}"
+        text = f"*{section.signal.heading}*"
         if section.offenders:
             table = _fixed_table(section, top_n)
             text += f"\n```\n{table}\n```"
+        # The count summary is placed on its own line beneath the table rather
+        # than inline with the heading, matching every other category.
+        text += f"\n{summary}"
         blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
         # Dependabot posture sub-tables follow the Dependabot signal block.
         if section.signal is SignalType.DEPENDABOT:

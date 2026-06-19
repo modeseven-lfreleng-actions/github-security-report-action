@@ -106,17 +106,12 @@ def render_table_section(
 ) -> None:
     """Render a generic posture/freshness table to the terminal."""
     rows, hidden = truncate(section.rows, top_n)
-    # A count summary is printed as its own heading line (not the rich table
-    # title) so a long summary is never wrapped to a narrow table's width.
-    title = section.title
-    if section.summary:
-        title = f"{title} — {section.summary}"
+    # The title is always a bare heading line; the count summary is relocated
+    # beneath the table (after any guidance note) so every category presents
+    # its results in the same place rather than inline with the heading.
+    console.print(f"[bold]{section.title}[/bold]")
     if rows:
-        if section.summary:
-            console.print(f"[bold]{title}[/bold]")
-            table = Table(title_justify="left", title_style="bold")
-        else:
-            table = Table(title=title, title_justify="left", title_style="bold")
+        table = Table(title_justify="left", title_style="bold")
         for i, col in enumerate(section.columns):
             table.add_column(col, overflow="fold", justify="left" if i == 0 else "right")
         for row in rows:
@@ -129,10 +124,10 @@ def render_table_section(
             # describes a populated table, so it is omitted when empty.
             for sentence in note_sentences(section.note):
                 console.print(f"  [dim]{sentence}[/dim]")
-    else:
-        console.print(f"[bold]{title}[/bold]")
-        if section.empty_note:
-            console.print(f"  [green]✅ {section.empty_note}[/green]")
+    elif section.empty_note:
+        console.print(f"  [green]✅ {section.empty_note}[/green]")
+    if section.summary:
+        console.print(f"  {section.summary}")
     console.print()
 
 

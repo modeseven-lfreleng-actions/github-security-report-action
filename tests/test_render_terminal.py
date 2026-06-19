@@ -112,7 +112,9 @@ def test_mutable_releases_rendered_with_summary() -> None:
         summary="2 with findings, 82 clean",
     )
     out = _render(org)
+    # The heading is bare; the summary is relocated beneath the table.
     assert "Mutable Releases" in out
+    assert "Mutable Releases — 2 with findings" not in out
     assert "2 with findings, 82 clean" in out
     assert "img" in out
 

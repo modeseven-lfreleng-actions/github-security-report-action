@@ -28,6 +28,7 @@
     section h2 { color: #2d3748; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; }
     section h3 { color: #2d3748; margin-top: 1.5rem; font-size: 1.05rem; }
     .note { color: #718096; font-size: 0.85rem; margin-top: 0.5rem; font-style: italic; }
+    .summary { color: #4a5568; font-size: 0.9rem; margin-top: 0.5rem; }
     table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
     th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid #edf2f7; }
     th { background: #f7fafc; }
@@ -94,7 +95,7 @@
       {% if s.unknown_count %}<p class="unknown"><span aria-hidden="true">ℹ️</span> {{ s.unknown_count }} repositories with unknown status (insufficient permission or a transient read failure)</p>{% endif %}
       {% if not (s.rows or s.clean_count or s.nag or s.unknown_count) %}<p class="empty">No data available.</p>{% endif %}
       {% for t in s.extra_tables or [] %}
-      <h3>{{ t.title }}{% if t.summary %} — {{ t.summary }}{% endif %}</h3>
+      <h3>{{ t.title }}</h3>
       {% if t.rows %}
       <table class="dt-enabled">
         <thead>
@@ -112,13 +113,14 @@
       {% if t.hidden %}<p class="note">… and {{ t.hidden }} more</p>{% endif %}
       {% elif t.empty_note %}<p class="clean"><span aria-hidden="true">✅</span> {{ t.empty_note }}</p>{% endif %}
       {% if t.rows and t.note_lines %}{% for line in t.note_lines %}<p class="note">{{ line }}</p>{% endfor %}{% endif %}
+      {% if t.summary %}<p class="summary">{{ t.summary }}</p>{% endif %}
       {% endfor %}
     </section>
     {% endfor %}
 
     {% if releases %}
     <section>
-      <h2>{{ releases.title }}{% if releases.summary %} — {{ releases.summary }}{% endif %}</h2>
+      <h2>{{ releases.title }}</h2>
       {% if releases.rows %}
       <table class="dt-enabled">
         <thead>
@@ -136,12 +138,13 @@
       {% if releases.hidden %}<p class="note">… and {{ releases.hidden }} more</p>{% endif %}
       {% elif releases.empty_note %}<p class="clean"><span aria-hidden="true">✅</span> {{ releases.empty_note }}</p>{% endif %}
       {% if releases.rows and releases.note_lines %}{% for line in releases.note_lines %}<p class="note">{{ line }}</p>{% endfor %}{% endif %}
+      {% if releases.summary %}<p class="summary">{{ releases.summary }}</p>{% endif %}
     </section>
     {% endif %}
 
     {% if mutable_releases %}
     <section>
-      <h2>{{ mutable_releases.title }}{% if mutable_releases.summary %} — {{ mutable_releases.summary }}{% endif %}</h2>
+      <h2>{{ mutable_releases.title }}</h2>
       {% if mutable_releases.rows %}
       <table class="dt-enabled">
         <thead>
@@ -159,6 +162,7 @@
       {% if mutable_releases.hidden %}<p class="note">… and {{ mutable_releases.hidden }} more</p>{% endif %}
       {% elif mutable_releases.empty_note %}<p class="clean"><span aria-hidden="true">✅</span> {{ mutable_releases.empty_note }}</p>{% endif %}
       {% if mutable_releases.rows and mutable_releases.note_lines %}{% for line in mutable_releases.note_lines %}<p class="note">{{ line }}</p>{% endfor %}{% endif %}
+      {% if mutable_releases.summary %}<p class="summary">{{ mutable_releases.summary }}</p>{% endif %}
     </section>
     {% endif %}
 

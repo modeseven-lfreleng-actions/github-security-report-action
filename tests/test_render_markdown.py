@@ -181,8 +181,10 @@ class TestExtraTables:
             summary="2 with findings, 82 clean",
         )
         out = markdown.render_org(org)
-        # The count summary is appended to the heading.
-        assert "## Mutable Releases — 2 with findings, 82 clean" in out
+        # The heading is bare; the count summary is rendered beneath the table.
+        assert "## Mutable Releases\n" in out
+        assert "## Mutable Releases —" not in out
+        assert "\n2 with findings, 82 clean\n" in out
         assert "| [img](https://github.com/o/img) | v0.1.0 (latest) |" in out
         assert "_Recent releases in the repositories above are not immutable._" in out
 

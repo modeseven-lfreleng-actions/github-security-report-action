@@ -90,10 +90,14 @@ class TestOrgHtml:
             summary="3 stale, 7 fresh",
         )
         out = html.render_org_html(org)
-        # Sub-table and release headings carry their count summary too.
-        assert "<h3>Enablement — 1 not enabled, 5 enabled</h3>" in out
+        # Headings are bare; the count summary renders in its own paragraph below.
+        assert "<h3>Enablement</h3>" in out
+        assert "<h3>Enablement —" not in out
+        assert '<p class="summary">1 not enabled, 5 enabled</p>' in out
         assert '<a href="https://github.com/o/off">off</a>' in out
-        assert "<h2>Releases / Tagging — 3 stale, 7 fresh</h2>" in out
+        assert "<h2>Releases / Tagging</h2>" in out
+        assert "<h2>Releases / Tagging —" not in out
+        assert '<p class="summary">3 stale, 7 fresh</p>' in out
         assert '<a href="https://github.com/o/stale">stale</a>' in out
         assert "Ranked by combined staleness." in out
 
@@ -107,7 +111,9 @@ class TestOrgHtml:
             summary="2 with findings, 82 clean",
         )
         out = html.render_org_html(org)
-        assert "<h2>Mutable Releases — 2 with findings, 82 clean</h2>" in out
+        assert "<h2>Mutable Releases</h2>" in out
+        assert "<h2>Mutable Releases —" not in out
+        assert '<p class="summary">2 with findings, 82 clean</p>' in out
         assert '<a href="https://github.com/o/img">img</a>' in out
         assert "v0.1.0 (latest)" in out
         assert (

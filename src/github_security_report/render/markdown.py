@@ -105,10 +105,9 @@ def render_table_section(
 ) -> str:
     """Render a generic posture/freshness table at the given heading level."""
     heading = "#" * level
-    title = section.title
-    if section.summary:
-        title = f"{title} — {section.summary}"
-    lines = [f"{heading} {title}", ""]
+    # The title is always a bare heading; the count summary is relocated beneath
+    # the table (after any note) so results are never inline with the heading.
+    lines = [f"{heading} {section.title}", ""]
     rows, hidden = truncate(section.rows, top_n)
     if rows:
         aligns = ["---"] * len(section.columns)
@@ -127,6 +126,9 @@ def render_table_section(
             lines.append("")
     elif section.empty_note:
         lines.append(f"✅ {section.empty_note}")
+        lines.append("")
+    if section.summary:
+        lines.append(section.summary)
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 

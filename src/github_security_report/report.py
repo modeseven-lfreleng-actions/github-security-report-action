@@ -82,8 +82,9 @@ class TableSection:
     empty_note: str = ""
     # Optional explanatory footnote rendered beneath the table.
     note: str = ""
-    # Optional one-line count summary appended to the heading (e.g.
-    # "2 with findings, 82 clean"). Empty for tables that show no summary.
+    # Optional one-line count summary rendered beneath the table (after any
+    # note), e.g. "2 with findings, 82 clean". Empty for tables that show no
+    # summary.
     summary: str = ""
 
 
