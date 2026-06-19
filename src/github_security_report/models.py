@@ -85,10 +85,12 @@ class ReleaseRef:
     ``published_at`` falls back to the release's creation time when GitHub does
     not supply a publish timestamp. ``is_latest`` marks the release carrying
     GitHub's "Latest" badge; ``is_prerelease`` distinguishes a pre-release.
+    ``immutable`` is ``None`` when GitHub does not report an immutability state
+    (the GraphQL field is nullable), distinct from a confirmed mutable (False).
     """
 
     tag: str
-    immutable: bool
+    immutable: bool | None
     published_at: dt.datetime | None = None
     is_latest: bool = False
     is_prerelease: bool = False

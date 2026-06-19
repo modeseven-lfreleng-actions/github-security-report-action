@@ -103,10 +103,19 @@ def _tag_committed_date(tags: dict | None) -> dt.datetime | None:
     nodes = (tags or {}).get("nodes") or []
     if not nodes:
         return None
-    target = nodes[0].get("target") or {}
+    # GraphQL connection nodes may legally be null (or non-dict) when a
+    # sub-object errors; guard the node and its target so a bad entry
+    # degrades to None instead of aborting the batched collection.
+    first = nodes[0]
+    if not isinstance(first, dict):
+        return None
+    target = first.get("target")
+    if not isinstance(target, dict):
+        return None
     committed = target.get("committedDate")
     if committed is None:  # annotated tag: the Tag's target is the Commit
-        committed = (target.get("target") or {}).get("committedDate")
+        inner = target.get("target")
+        committed = inner.get("committedDate") if isinstance(inner, dict) else None
     return _parse_iso(committed)
 
 
@@ -119,6 +128,10 @@ def _release_refs(nodes: list[dict]) -> list[ReleaseRef]:
     """
     refs: list[ReleaseRef] = []
     for node in nodes:
+        # GraphQL list entries may be null (e.g. when a sub-object errors);
+        # skip non-dict nodes so a single bad entry cannot abort collection.
+        if not isinstance(node, dict):
+            continue
         if node.get("isDraft"):
             continue
         tag = node.get("tagName")
@@ -127,10 +140,14 @@ def _release_refs(nodes: list[dict]) -> list[ReleaseRef]:
         published = _parse_iso(node.get("publishedAt")) or _parse_iso(
             node.get("createdAt")
         )
+        # ``immutable`` is nullable in GitHub's GraphQL schema; preserve a
+        # missing value as None (indeterminate) rather than coercing it to
+        # False, which would misreport an unknown state as mutable.
+        raw_immutable = node.get("immutable")
         refs.append(
             ReleaseRef(
                 tag=tag,
-                immutable=bool(node.get("immutable")),
+                immutable=None if raw_immutable is None else bool(raw_immutable),
                 published_at=published,
                 is_latest=bool(node.get("isLatest")),
                 is_prerelease=bool(node.get("isPrerelease")),

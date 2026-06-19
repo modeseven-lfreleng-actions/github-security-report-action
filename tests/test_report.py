@@ -43,7 +43,8 @@ class TestNoteSentences:
         ]
 
     def test_semicolon_does_not_split(self) -> None:
-        # A semicolon clause stays on one line; only a period+space breaks.
+        # A semicolon clause stays on one line; only a period followed by
+        # whitespace breaks.
         assert report.note_sentences("Mandatory; any value passes.") == [
             "Mandatory; any value passes."
         ]

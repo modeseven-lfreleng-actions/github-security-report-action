@@ -249,13 +249,10 @@ def _report_from(data: dict, base: ReportConfig) -> ReportConfig:
     data = dict(data)
     # Back-compat: `release_min_age_days` was the original (misleading) name for
     # the repository-age grace period now called `repo_min_age_days`. Accept it
-    # as an alias, warning once, and let an explicit new key win if both appear.
+    # as an alias and let an explicit new key win if both appear. The (single)
+    # deprecation warning is emitted by build_config, which sees every block.
     if "release_min_age_days" in data:
         legacy = data.pop("release_min_age_days")
-        log.warning(
-            "config key 'release_min_age_days' is deprecated; use "
-            "'repo_min_age_days' (the repository-age grace period) instead"
-        )
         data.setdefault("repo_min_age_days", legacy)
     result = replace(
         base,
@@ -287,6 +284,17 @@ def build_config(data: dict) -> Config:
         jsonschema.validate(data, CONFIG_SCHEMA)
     except jsonschema.ValidationError as exc:
         raise ConfigError(f"configuration is invalid: {exc.message}") from exc
+
+    # The deprecated `release_min_age_days` alias can appear in the global report
+    # block and in any org override; warn exactly once however many blocks use
+    # it, so users are not alarmed by a repeated message.
+    report_blocks = [data.get("report", {})]
+    report_blocks += [o.get("report", {}) for o in data.get("organizations", [])]
+    if any("release_min_age_days" in block for block in report_blocks):
+        log.warning(
+            "config key 'release_min_age_days' is deprecated; use "
+            "'repo_min_age_days' (the repository-age grace period) instead"
+        )
 
     global_slack = _slack_from(data.get("slack", {}), SlackConfig())
     global_report = _report_from(data.get("report", {}), ReportConfig())

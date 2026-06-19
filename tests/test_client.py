@@ -473,6 +473,65 @@ async def test_repo_graph_batch_annotated_tag(client: GitHubClient) -> None:
 
 
 @respx.mock
+async def test_repo_graph_batch_null_tag_node(client: GitHubClient) -> None:
+    # GraphQL connection nodes can be null (e.g. a sub-object errored). A null
+    # tag node must degrade to no tag date, not abort the whole collection.
+    node = _graph_repo_node()
+    node["tags"] = {"nodes": [None]}
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(200, json={"data": {"r0": node}})
+    )
+    out = await client.repo_graph_batch("o", ["a"])
+    assert out["a"].latest_tag_at is None
+
+
+@respx.mock
+async def test_repo_graph_batch_null_release_node(client: GitHubClient) -> None:
+    # GraphQL list entries can be null (e.g. a sub-object errored). A null entry
+    # among the release nodes must be skipped, not abort the whole collection.
+    good = {
+        "tagName": "v1.0.0",
+        "isLatest": True,
+        "isPrerelease": False,
+        "isDraft": False,
+        "immutable": True,
+        "publishedAt": "2026-01-01T00:00:00Z",
+        "createdAt": "2026-01-01T00:00:00Z",
+    }
+    node = _graph_repo_node(releases=[None, good])
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(200, json={"data": {"r0": node}})
+    )
+    out = await client.repo_graph_batch("o", ["a"])
+    assert out["a"].last_published_release is not None
+    assert out["a"].last_published_release.tag == "v1.0.0"
+
+
+@respx.mock
+async def test_repo_graph_batch_null_immutable_is_indeterminate(
+    client: GitHubClient,
+) -> None:
+    # GitHub's GraphQL ``immutable`` field is nullable; a null/missing value
+    # must parse to None (indeterminate), not be coerced to False (mutable).
+    null_immutable = {
+        "tagName": "v1.0.0",
+        "isLatest": True,
+        "isPrerelease": False,
+        "isDraft": False,
+        "immutable": None,
+        "publishedAt": "2026-01-01T00:00:00Z",
+        "createdAt": "2026-01-01T00:00:00Z",
+    }
+    node = _graph_repo_node(latest_release=null_immutable, releases=[null_immutable])
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(200, json={"data": {"r0": node}})
+    )
+    out = await client.repo_graph_batch("o", ["a"])
+    assert out["a"].latest_release is not None
+    assert out["a"].latest_release.immutable is None
+
+
+@respx.mock
 async def test_repo_graph_batch_non_200_returns_defaults(client: GitHubClient) -> None:
     respx.post(f"{API}/graphql").mock(return_value=httpx.Response(502))
     out = await client.repo_graph_batch("o", ["a", "b"])

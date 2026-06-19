@@ -118,6 +118,20 @@ def test_alerts_table_empty_with_indeterminate_is_not_assertive() -> None:
     )
 
 
+def test_alerts_table_all_indeterminate_has_no_summary() -> None:
+    # Every repo is indeterminate (None), so neither the negative nor the
+    # positive count has data. The summary must be empty so renderers omit it
+    # rather than printing a misleading "0 enabled".
+    table = posture.build_alerts_table(
+        [
+            posture.RepoPosture(repo=_repo("dunno"), dependabot_alerts=None),
+            posture.RepoPosture(repo=_repo("unknown"), dependabot_alerts=None),
+        ]
+    )
+    assert table.rows == []
+    assert table.summary == ""
+
+
 def test_security_updates_table_lists_disabled_sorted() -> None:
     postures = [
         posture.RepoPosture(repo=_repo("b"), security_updates=False),
@@ -359,7 +373,7 @@ def test_releases_table_release_max_age_zero_keeps_all_eligible() -> None:
 def _release(
     tag: str,
     *,
-    immutable: bool,
+    immutable: bool | None,
     published: int = 0,
     latest: bool = False,
     prerelease: bool = False,
@@ -473,3 +487,35 @@ def test_mutable_releases_rows_sorted_by_repo_name() -> None:
     table = posture.build_mutable_releases_table(postures)
     assert [r.repo.name for r in table.rows] == ["alpha", "zeta"]
     assert table.summary == "2 with findings, 0 clean"
+
+
+def test_mutable_releases_indeterminate_immutable_is_neither() -> None:
+    # GitHub's GraphQL ``immutable`` field is nullable; an unknown state
+    # (None) must not be coerced into a mutable finding, nor counted clean.
+    postures = [
+        posture.RepoPosture(
+            repo=_repo("unknown"),
+            latest_release=_release("v1", immutable=None, latest=True),
+        ),
+    ]
+    table = posture.build_mutable_releases_table(postures)
+    assert table.rows == []
+    # Neither a finding nor clean -> both counts zero -> no summary rendered.
+    assert table.summary == ""
+
+
+def test_mutable_releases_confirmed_mutable_alongside_unknown_is_flagged() -> None:
+    # A confirmed mutable (False) release is still a finding even when the
+    # other checked release has an indeterminate immutability state.
+    postures = [
+        posture.RepoPosture(
+            repo=_repo("mixed"),
+            latest_release=_release("v2", immutable=False, latest=True),
+            last_published_release=_release("v1", immutable=None),
+        ),
+    ]
+    table = posture.build_mutable_releases_table(postures)
+    assert [r.repo.name for r in table.rows] == ["mixed"]
+    # Only the confirmed-mutable tag is listed; the unknown one is not.
+    assert table.rows[0].cells == ("v2 (latest)",)
+    assert table.summary == "1 with findings, 0 clean"

@@ -155,7 +155,13 @@ def _posture_summary(bad: int, bad_label: str, good: int, good_label: str) -> st
     When the bad count is zero there is no negative worth showing, so only the
     positive (good) count is reported (e.g. ``"84 enabled"`` rather than
     ``"0 not enabled, 84 enabled"``).
+
+    When both counts are zero there is nothing to summarise (e.g. every repo is
+    indeterminate), so an empty string is returned and renderers omit the
+    summary entirely rather than printing a misleading ``"0 enabled"``.
     """
+    if bad == 0 and good == 0:
+        return ""
     if bad == 0:
         return f"{good} {good_label}"
     return f"{bad} {bad_label}, {good} {good_label}"
@@ -350,10 +356,12 @@ def build_mutable_releases_table(postures: list[RepoPosture]) -> TableSection:
     more than one entry may appear). Duplicate tags are collapsed and the
     "Latest" entry is annotated ``(latest)``. The heading summary counts
     repositories with findings against those whose checked releases are all
-    immutable; repositories with no releases to check are counted as neither.
+    immutable; repositories with no releases to check, or whose checked
+    releases have only an indeterminate (unknown) immutability state, are
+    counted as neither.
     """
     flagged: list[tuple[RepoPosture, list[ReleaseRef]]] = []
-    checked = 0
+    clean_count = 0
     for posture in postures:
         seen: set[str] = set()
         candidates: list[ReleaseRef] = []
@@ -363,10 +371,15 @@ def build_mutable_releases_table(postures: list[RepoPosture]) -> TableSection:
                 candidates.append(ref)
         if not candidates:
             continue  # no releases to check: neither a finding nor clean
-        checked += 1
-        mutable = [ref for ref in candidates if not ref.immutable]
+        # Only a confirmed-mutable release (immutable is False) is a finding;
+        # an indeterminate (None) immutability state is treated as unknown.
+        mutable = [ref for ref in candidates if ref.immutable is False]
         if mutable:
             flagged.append((posture, mutable))
+        elif all(ref.immutable is True for ref in candidates):
+            clean_count += 1
+        # else: at least one release's immutability is unknown and none is
+        # confirmed mutable -> indeterminate, counted as neither.
 
     rows: list[TableRow] = []
     for posture, mutable in sorted(flagged, key=lambda item: item[0].repo.name):
@@ -381,7 +394,6 @@ def build_mutable_releases_table(postures: list[RepoPosture]) -> TableSection:
         rows.append(TableRow(repo=posture.repo, cells=(", ".join(labels),)))
 
     finding_count = len(flagged)
-    clean_count = checked - finding_count
     return TableSection(
         title="Mutable Releases",
         columns=("Repository", "Releases"),

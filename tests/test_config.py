@@ -107,6 +107,22 @@ class TestBuildConfig:
         assert org.report.repo_min_age_days == 14
         assert any("deprecated" in r.message for r in caplog.records)
 
+    def test_release_min_age_days_warns_only_once(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # The legacy key in both the global block and an org override must warn
+        # exactly once, not once per block, so users are not alarmed.
+        data = {
+            "report": {"release_min_age_days": 30},
+            "organizations": [
+                {"name": "a", "report": {"release_min_age_days": 14}},
+                {"name": "b", "report": {"release_min_age_days": 7}},
+            ],
+        }
+        config.build_config(data)
+        warnings = [r for r in caplog.records if "deprecated" in r.message]
+        assert len(warnings) == 1
+
     def test_repo_min_age_days_wins_over_legacy_alias(self) -> None:
         # An explicit new key takes precedence over the deprecated alias.
         data = {
