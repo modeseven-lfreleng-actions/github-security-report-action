@@ -97,9 +97,7 @@ def test_alerts_table_empty_has_note_only() -> None:
     # With nothing disabled the summary drops the zero negative count and the
     # note reads positively.
     assert table.summary == "1 enabled"
-    assert table.empty_note == (
-        "All in-scope repositories have this feature enabled."
-    )
+    assert table.empty_note == ("All in-scope repositories have this feature enabled.")
 
 
 def test_alerts_table_empty_with_indeterminate_is_not_assertive() -> None:
@@ -155,9 +153,7 @@ def test_security_updates_table_all_enabled_summary() -> None:
     )
     assert table.rows == []
     assert table.summary == "2 enabled"
-    assert table.empty_note == (
-        "All in-scope repositories have this feature enabled."
-    )
+    assert table.empty_note == ("All in-scope repositories have this feature enabled.")
 
 
 def test_security_updates_table_empty_with_indeterminate() -> None:
@@ -241,13 +237,19 @@ def test_release_excluded_when_young() -> None:
 
 def test_release_not_excluded_when_old_enough() -> None:
     assert not posture.is_release_excluded(
-        _repo("mature", age_days=400), generated_at=NOW, repo_min_age_days=28, exclude=()
+        _repo("mature", age_days=400),
+        generated_at=NOW,
+        repo_min_age_days=28,
+        exclude=(),
     )
 
 
 def test_release_min_age_zero_includes_everything() -> None:
     assert not posture.is_release_excluded(
-        _repo("brand-new", age_days=0), generated_at=NOW, repo_min_age_days=0, exclude=()
+        _repo("brand-new", age_days=0),
+        generated_at=NOW,
+        repo_min_age_days=0,
+        exclude=(),
     )
 
 
@@ -369,7 +371,10 @@ def test_releases_table_release_max_age_omits_current_repos() -> None:
         posture.RepoPosture(repo=_repo("never", age_days=400)),
     ]
     table = posture.build_releases_table(
-        postures, generated_at=NOW, repo_min_age_days=28, release_max_age_days=60,
+        postures,
+        generated_at=NOW,
+        repo_min_age_days=28,
+        release_max_age_days=60,
         exclude=(),
     )
     assert sorted(r.repo.name for r in table.rows) == ["never", "stale"]
@@ -385,7 +390,10 @@ def test_releases_table_release_max_age_boundary_is_inclusive() -> None:
         ),
     ]
     table = posture.build_releases_table(
-        postures, generated_at=NOW, repo_min_age_days=28, release_max_age_days=60,
+        postures,
+        generated_at=NOW,
+        repo_min_age_days=28,
+        release_max_age_days=60,
         exclude=(),
     )
     assert table.rows == []
@@ -400,7 +408,10 @@ def test_releases_table_release_max_age_zero_keeps_all_eligible() -> None:
         ),
     ]
     table = posture.build_releases_table(
-        postures, generated_at=NOW, repo_min_age_days=28, release_max_age_days=0,
+        postures,
+        generated_at=NOW,
+        repo_min_age_days=28,
+        release_max_age_days=0,
         exclude=(),
     )
     assert [r.repo.name for r in table.rows] == ["fresh"]
