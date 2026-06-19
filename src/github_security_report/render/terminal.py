@@ -10,7 +10,6 @@ sections 10-11.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 
 from rich.console import Console
@@ -21,22 +20,11 @@ from github_security_report.report import (
     OrgReport,
     SignalSection,
     TableSection,
+    note_sentences,
     truncate,
 )
 
 _SEVERITY_STYLE = {"critical": "bold red", "high": "red", "medium": "yellow", "low": "dim"}
-
-
-def _split_sentences(text: str) -> list[str]:
-    """Split a footnote into one sentence per line for readable terminal output.
-
-    Splits on a sentence-ending period followed by whitespace, keeping the
-    period. A semicolon does not end a sentence, so a clause such as
-    "mandatory; any value passes." stays on one line. A single-sentence note is
-    returned unchanged as one line.
-    """
-    parts = re.split(r"(?<=\.)\s+", text.strip())
-    return [part for part in parts if part]
 
 
 def _add_columns(table: Table, signal: SignalType) -> None:
@@ -139,7 +127,7 @@ def render_table_section(
         if section.note:
             # A long footnote reads better split one sentence per line. It only
             # describes a populated table, so it is omitted when empty.
-            for sentence in _split_sentences(section.note):
+            for sentence in note_sentences(section.note):
                 console.print(f"  [dim]{sentence}[/dim]")
     else:
         console.print(f"[bold]{title}[/bold]")

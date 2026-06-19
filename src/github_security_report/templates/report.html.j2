@@ -111,7 +111,7 @@
       </table>
       {% if t.hidden %}<p class="note">… and {{ t.hidden }} more</p>{% endif %}
       {% elif t.empty_note %}<p class="clean"><span aria-hidden="true">✅</span> {{ t.empty_note }}</p>{% endif %}
-      {% if t.rows and t.note %}<p class="note">{{ t.note }}</p>{% endif %}
+      {% if t.rows and t.note_lines %}{% for line in t.note_lines %}<p class="note">{{ line }}</p>{% endfor %}{% endif %}
       {% endfor %}
     </section>
     {% endfor %}
@@ -135,7 +135,7 @@
       </table>
       {% if releases.hidden %}<p class="note">… and {{ releases.hidden }} more</p>{% endif %}
       {% elif releases.empty_note %}<p class="clean"><span aria-hidden="true">✅</span> {{ releases.empty_note }}</p>{% endif %}
-      {% if releases.rows and releases.note %}<p class="note">{{ releases.note }}</p>{% endif %}
+      {% if releases.rows and releases.note_lines %}{% for line in releases.note_lines %}<p class="note">{{ line }}</p>{% endfor %}{% endif %}
     </section>
     {% endif %}
 
@@ -158,7 +158,7 @@
       </table>
       {% if mutable_releases.hidden %}<p class="note">… and {{ mutable_releases.hidden }} more</p>{% endif %}
       {% elif mutable_releases.empty_note %}<p class="clean"><span aria-hidden="true">✅</span> {{ mutable_releases.empty_note }}</p>{% endif %}
-      {% if mutable_releases.rows and mutable_releases.note %}<p class="note">{{ mutable_releases.note }}</p>{% endif %}
+      {% if mutable_releases.rows and mutable_releases.note_lines %}{% for line in mutable_releases.note_lines %}<p class="note">{{ line }}</p>{% endfor %}{% endif %}
     </section>
     {% endif %}
 

@@ -115,6 +115,20 @@ class TestOrgHtml:
             "immutable.</p>" in out
         )
 
+    def test_multi_sentence_note_splits_into_paragraphs(self) -> None:
+        # A two-sentence note renders as one italic paragraph per sentence, the
+        # same way the terminal surface breaks it.
+        org = _org("o", [], count=2)
+        org.releases = report.TableSection(
+            title="Releases / Tagging",
+            columns=("Repository", "Last release"),
+            rows=[report.TableRow(repo=_repo("stale"), cells=("never",))],
+            note="First sentence here. Second sentence here.",
+        )
+        out = html.render_org_html(org)
+        assert '<p class="note">First sentence here.</p>' in out
+        assert '<p class="note">Second sentence here.</p>' in out
+
     def test_renders_excluded_banner(self) -> None:
         org = _org("o", [], count=3)
         org.excluded_repos = [_repo("opted-out")]

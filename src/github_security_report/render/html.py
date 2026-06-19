@@ -19,6 +19,7 @@ from github_security_report.report import (
     OrgReport,
     SignalSection,
     TableSection,
+    note_sentences,
     truncate,
 )
 
@@ -72,6 +73,7 @@ def _table_context(section: TableSection, top_n: int | None = None) -> dict:
         "hidden": hidden,
         "empty_note": section.empty_note,
         "note": section.note,
+        "note_lines": note_sentences(section.note),
         "summary": section.summary,
     }
 

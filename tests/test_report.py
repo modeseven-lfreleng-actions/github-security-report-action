@@ -32,6 +32,27 @@ def _sections(org: report.OrgReport) -> dict[SignalType, report.SignalSection]:
     return {s.signal: s for s in org.sections}
 
 
+class TestNoteSentences:
+    def test_single_sentence_is_one_line(self) -> None:
+        assert report.note_sentences("Just the one.") == ["Just the one."]
+
+    def test_splits_on_sentence_boundary(self) -> None:
+        assert report.note_sentences("First here. Second here.") == [
+            "First here.",
+            "Second here.",
+        ]
+
+    def test_semicolon_does_not_split(self) -> None:
+        # A semicolon clause stays on one line; only a period+space breaks.
+        assert report.note_sentences("Mandatory; any value passes.") == [
+            "Mandatory; any value passes."
+        ]
+
+    def test_empty_note_has_no_lines(self) -> None:
+        assert report.note_sentences("") == []
+        assert report.note_sentences("   ") == []
+
+
 class TestBuildOrgReport:
     def test_sections_in_fixed_order(self) -> None:
         org = report.build_org_report("o", [], repo_count=0, generated_at=WHEN)

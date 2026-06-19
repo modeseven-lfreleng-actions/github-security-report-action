@@ -11,6 +11,7 @@ repos excluded), and an unknown count. See ``docs/BRIEF.md`` sections 4-6, 11.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TypeVar
@@ -119,6 +120,21 @@ class Report:
 
 
 _T = TypeVar("_T")
+
+# Splits a footnote on a sentence-ending period followed by whitespace, keeping
+# the period. A semicolon does not end a sentence, so a clause such as
+# "mandatory; any value passes." stays on one line.
+_SENTENCE_BREAK = re.compile(r"(?<=\.)\s+")
+
+
+def note_sentences(note: str) -> list[str]:
+    """Split a table footnote into one sentence per line.
+
+    Render surfaces that show a note across multiple lines (the terminal and
+    HTML) share this splitter so a multi-sentence note breaks identically. A
+    single-sentence note returns one line; an empty note returns no lines.
+    """
+    return [part for part in _SENTENCE_BREAK.split(note.strip()) if part]
 
 
 def truncate(items: Sequence[_T], top_n: int | None) -> tuple[list[_T], int]:
