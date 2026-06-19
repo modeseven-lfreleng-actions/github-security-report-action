@@ -8,7 +8,7 @@ import datetime as dt
 
 from github_security_report import collect
 from github_security_report.config import OrgConfig, ReportConfig
-from github_security_report.models import Repo, RepoState, SignalType
+from github_security_report.models import Repo, RepoGraphData, RepoState, SignalType
 
 WHEN = dt.datetime(2026, 6, 16, 9, 0, tzinfo=dt.timezone.utc)
 
@@ -109,6 +109,22 @@ class FakeClient:
 
     async def latest_tag_at(self, org: str, repo: str) -> dt.datetime | None:
         return None
+
+    async def repo_graph_batch(
+        self, org: str, names: list[str]
+    ) -> dict[str, RepoGraphData]:
+        # Assemble the batched prefetch result from the per-repo helper methods
+        # above, so subclasses overriding those helpers flow through unchanged.
+        out: dict[str, RepoGraphData] = {}
+        for name in names:
+            cfg_status, cfg_text = await self.dependabot_config(org, name)
+            out[name] = RepoGraphData(
+                dependabot_alerts_enabled=await self.dependabot_enabled(org, name),
+                latest_tag_at=await self.latest_tag_at(org, name),
+                latest_release_at=await self.latest_release_at(org, name),
+                dependabot_config=cfg_text if cfg_status == 200 else None,
+            )
+        return out
 
 
 def _sections(org_report: object) -> dict[SignalType, object]:

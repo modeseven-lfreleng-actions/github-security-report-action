@@ -324,103 +324,114 @@ async def test_automated_security_fixes_error_is_indeterminate(
     assert await client.automated_security_fixes("o", "r") is None
 
 
-@respx.mock
-async def test_dependabot_config_returns_raw_body(client: GitHubClient) -> None:
-    respx.get(f"{API}/repos/o/r/contents/.github/dependabot.yml").mock(
-        return_value=httpx.Response(200, text="version: 2\n")
-    )
-    status, text = await client.dependabot_config("o", "r")
-    assert status == 200
-    assert text == "version: 2\n"
+# --------------------------------------------------------------------------- #
+# Batched per-repo GraphQL prefetch
+# --------------------------------------------------------------------------- #
+def _graph_repo_node(
+    *,
+    enabled: bool | None = True,
+    config_text: str | None = None,
+    tag_target: dict | None = None,
+    releases: list[dict] | None = None,
+) -> dict:
+    """Build one repository alias node as the batched query returns it."""
+    return {
+        "hasVulnerabilityAlertsEnabled": enabled,
+        "dependabotConfig": (
+            {"text": config_text} if config_text is not None else None
+        ),
+        "tags": {"nodes": [{"target": tag_target}] if tag_target else []},
+        "releases": {"nodes": releases or []},
+    }
 
 
 @respx.mock
-async def test_dependabot_config_missing(client: GitHubClient) -> None:
-    respx.get(f"{API}/repos/o/r/contents/.github/dependabot.yml").mock(
-        return_value=httpx.Response(404)
-    )
-    status, text = await client.dependabot_config("o", "r")
-    assert status == 404
-    assert text == ""
-
-
-@respx.mock
-async def test_latest_release_at_parses_published(client: GitHubClient) -> None:
-    respx.get(f"{API}/repos/o/r/releases/latest").mock(
-        return_value=httpx.Response(200, json={"published_at": "2026-01-02T03:04:05Z"})
-    )
-    when = await client.latest_release_at("o", "r")
-    assert when is not None
-    assert when.year == 2026 and when.month == 1 and when.day == 2
-
-
-@respx.mock
-async def test_latest_release_at_none_when_absent(client: GitHubClient) -> None:
-    respx.get(f"{API}/repos/o/r/releases/latest").mock(return_value=httpx.Response(404))
-    assert await client.latest_release_at("o", "r") is None
-
-
-@respx.mock
-async def test_latest_tag_at_lightweight_commit(client: GitHubClient) -> None:
-    respx.post(f"{API}/graphql").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "data": {
-                    "repository": {
-                        "refs": {
-                            "nodes": [
-                                {
-                                    "target": {
-                                        "__typename": "Commit",
-                                        "committedDate": "2025-12-31T00:00:00Z",
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
+async def test_repo_graph_batch_parses_aliases(client: GitHubClient) -> None:
+    # r0: lightweight tag, a config, a latest release plus a newer pre-release;
+    # r1: a null alias (unreadable) -> defaults.
+    r0 = _graph_repo_node(
+        enabled=True,
+        config_text="version: 2\n",
+        tag_target={"__typename": "Commit", "committedDate": "2025-12-31T00:00:00Z"},
+        releases=[
+            {
+                "tagName": "v1.0.0-alpha1",
+                "isLatest": False,
+                "isPrerelease": True,
+                "isDraft": False,
+                "immutable": False,
+                "publishedAt": "2026-02-01T00:00:00Z",
+                "createdAt": "2026-02-01T00:00:00Z",
             },
-        )
-    )
-    when = await client.latest_tag_at("o", "r")
-    assert when is not None and when.year == 2025
-
-
-@respx.mock
-async def test_latest_tag_at_annotated_tag(client: GitHubClient) -> None:
-    respx.post(f"{API}/graphql").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "data": {
-                    "repository": {
-                        "refs": {
-                            "nodes": [
-                                {
-                                    "target": {
-                                        "__typename": "Tag",
-                                        "target": {
-                                            "committedDate": "2025-06-01T00:00:00Z"
-                                        },
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
+            {
+                "tagName": "v0.9.0",
+                "isLatest": True,
+                "isPrerelease": False,
+                "isDraft": False,
+                "immutable": False,
+                "publishedAt": "2026-01-01T00:00:00Z",
+                "createdAt": "2026-01-01T00:00:00Z",
             },
-        )
+            {
+                "tagName": "draft",
+                "isLatest": False,
+                "isPrerelease": False,
+                "isDraft": True,
+                "immutable": False,
+                "publishedAt": None,
+                "createdAt": "2026-03-01T00:00:00Z",
+            },
+        ],
     )
-    when = await client.latest_tag_at("o", "r")
-    assert when is not None and when.month == 6
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(200, json={"data": {"r0": r0, "r1": None}})
+    )
+    out = await client.repo_graph_batch("o", ["a", "b"])
+
+    a = out["a"]
+    assert a.dependabot_alerts_enabled is True
+    assert a.dependabot_config == "version: 2\n"
+    assert a.latest_tag_at is not None and a.latest_tag_at.year == 2025
+    # The latest release carries the (latest) badge; the newer pre-release is the
+    # last published. The draft is excluded entirely.
+    assert a.latest_release is not None and a.latest_release.tag == "v0.9.0"
+    assert a.latest_release.is_latest is True
+    assert a.last_published_release is not None
+    assert a.last_published_release.tag == "v1.0.0-alpha1"
+    assert a.latest_release_at is not None and a.latest_release_at.month == 1
+
+    # A null alias degrades to defaults rather than being mislabelled.
+    b = out["b"]
+    assert b.dependabot_alerts_enabled is None
+    assert b.latest_release is None
+    assert b.dependabot_config is None
 
 
 @respx.mock
-async def test_latest_tag_at_none_when_no_tags(client: GitHubClient) -> None:
-    respx.post(f"{API}/graphql").mock(
-        return_value=httpx.Response(
-            200, json={"data": {"repository": {"refs": {"nodes": []}}}}
-        )
+async def test_repo_graph_batch_annotated_tag(client: GitHubClient) -> None:
+    node = _graph_repo_node(
+        tag_target={
+            "__typename": "Tag",
+            "target": {"committedDate": "2025-06-01T00:00:00Z"},
+        },
     )
-    assert await client.latest_tag_at("o", "r") is None
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(200, json={"data": {"r0": node}})
+    )
+    out = await client.repo_graph_batch("o", ["a"])
+    assert out["a"].latest_tag_at is not None
+    assert out["a"].latest_tag_at.month == 6
+
+
+@respx.mock
+async def test_repo_graph_batch_non_200_returns_defaults(client: GitHubClient) -> None:
+    respx.post(f"{API}/graphql").mock(return_value=httpx.Response(502))
+    out = await client.repo_graph_batch("o", ["a", "b"])
+    assert set(out) == {"a", "b"}
+    assert out["a"].dependabot_alerts_enabled is None
+    assert out["b"].latest_release is None
+
+
+async def test_repo_graph_batch_empty_names_no_request(client: GitHubClient) -> None:
+    # No names means no HTTP call at all (respx is not even engaged here).
+    assert await client.repo_graph_batch("o", []) == {}

@@ -27,7 +27,7 @@ from dataclasses import dataclass
 
 import yaml
 
-from github_security_report.models import Repo
+from github_security_report.models import ReleaseRef, Repo
 from github_security_report.report import TableRow, TableSection
 
 log = logging.getLogger(__name__)
@@ -48,6 +48,9 @@ class RepoPosture:
     # Releases / tagging (UTC; None = none found).
     latest_release_at: dt.datetime | None = None
     latest_tag_at: dt.datetime | None = None
+    # Release identities for the immutability check (None = absent).
+    latest_release: ReleaseRef | None = None
+    last_published_release: ReleaseRef | None = None
 
 
 def cooldown_missing_ecosystems(dependabot_yaml: str) -> tuple[str, ...]:
