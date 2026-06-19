@@ -42,8 +42,9 @@ tables (org mode):
 - **Dependabot** — three tables: repositories with vulnerability **alerts not
   enabled**, repositories with **security updates not enabled**, and ecosystems
   with no update `cooldown` configured (mandatory; any value passes).
-- **Releases / Tagging** — repositories overdue a release or tag, ranked by a
-  hidden compound staleness score. Repositories younger than
+- **Releases / Tagging** — repositories overdue a release or tag, ranked by
+  release/tag staleness (repository age never affects ordering; a repository
+  with no release or tag ranks highest). Repositories younger than
   `repo_min_age_days` (default 28; `0` includes all) and those in
   `releases_exclude` are omitted. Set `release_max_age_days` to only flag
   repositories whose newest release or tag is older than that many days

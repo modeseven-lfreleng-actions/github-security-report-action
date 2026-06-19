@@ -14,9 +14,10 @@ configuration-posture and freshness checks rendered as plain tables.
 - **Releases / Tagging**: repositories that have gone too long without a release
   or tag. Repositories younger than a configurable age are excluded (0 = none
   excluded); specific repositories can also be excluded on demand. Releases and
-  tags are reported in separate columns; a hidden compound sort score (the sum
-  of the release-staleness and tag-staleness day counts, so a repo with neither
-  counts its age twice) ranks the worst offenders first but is never displayed.
+  tags are reported in separate columns and the rows are ranked by release/tag
+  staleness alone (repository age only gates scope): a missing release or tag
+  counts as the worst possible signal, so a repo with neither ranks first. The
+  ranking key itself is never displayed.
 """
 
 from __future__ import annotations
@@ -286,19 +287,22 @@ def build_releases_table(
     release_max_age_days: int = 0,
     exclude: tuple[str, ...] = (),
 ) -> TableSection:
-    """The Releases / Tagging table, oldest-overall first.
+    """The Releases / Tagging table, stalest-overall first.
 
     Repositories created within ``repo_min_age_days`` are excluded (0 = none
     excluded), as are any whose name is in ``exclude``. When
     ``release_max_age_days`` is greater than 0, a repository is only listed when
     its newest release or tag is older than that many days (or it has neither),
-    so actively released repositories drop out. Ranking uses a hidden compound
-    score = release-staleness-days + tag-staleness-days, where an absent release
-    or tag contributes the full repository age (so a repository with neither
-    effectively counts its age twice).
+    so actively released repositories drop out.
+
+    Ranking is by release/tag staleness alone -- repository age only gates scope
+    and never affects ordering. A missing release or tag is treated as the worst
+    possible signal, so a repository with neither a release nor a tag ranks at
+    the very top; repositories with the same number of missing signals are then
+    ordered by their combined known staleness (oldest first).
     """
     excluded = frozenset(exclude)
-    ranked: list[tuple[int, RepoPosture, int | None, int | None]] = []
+    ranked: list[tuple[int, int, RepoPosture, int | None, int | None]] = []
     for posture in postures:
         repo = posture.repo
         if is_release_excluded(
@@ -308,25 +312,26 @@ def build_releases_table(
             exclude=excluded,
         ):
             continue
-        repo_age = _age_days(repo.created_at, generated_at)
         release_age = _age_days(posture.latest_release_at, generated_at)
         tag_age = _age_days(posture.latest_tag_at, generated_at)
         if _release_is_current(release_age, tag_age, release_max_age_days):
             continue
-        # Absent release/tag contributes the full repository age; an unknown
-        # creation date falls back to the staleness we do know (or zero).
-        fallback = repo_age if repo_age is not None else 0
-        compound = (release_age if release_age is not None else fallback) + (
-            tag_age if tag_age is not None else fallback
-        )
-        ranked.append((compound, posture, release_age, tag_age))
-    ranked.sort(key=lambda item: (-item[0], item[1].repo.name))
+        # Rank purely by release/tag staleness -- repository age only gates
+        # scope, never ordering. A missing release or tag is the worst possible
+        # signal, so it sorts above any dated repository; a repository missing
+        # *both* (never released, never tagged) therefore ranks at the very top.
+        # Among repositories with the same number of missing signals, the larger
+        # combined known staleness ranks higher.
+        missing = (release_age is None) + (tag_age is None)
+        known = (release_age or 0) + (tag_age or 0)
+        ranked.append((missing, known, posture, release_age, tag_age))
+    ranked.sort(key=lambda item: (-item[0], -item[1], item[2].repo.name))
     rows = [
         TableRow(
             repo=posture.repo,
             cells=(_age_cell(release_age), _age_cell(tag_age)),
         )
-        for _compound, posture, release_age, tag_age in ranked
+        for _missing, _known, posture, release_age, tag_age in ranked
     ]
     if repo_min_age_days > 0:
         age_note = (

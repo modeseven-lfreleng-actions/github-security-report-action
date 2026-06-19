@@ -140,14 +140,17 @@ reported in **two separate columns** as a human "last release / last tag" age.
 - **On-demand exclusions:** `releases_exclude` (per org; CLI `--releases-exclude`,
   repeatable) drops repositories that are never released / not consumed
   externally.
-- **Hidden compound sort score (never displayed):** rows rank by
-  `release_staleness_days + tag_staleness_days`. A **missing** release or tag
-  contributes the repository's **full age**, so a repository with **neither** a
-  release nor a tag effectively counts its age **twice** and ranks highest. The
-  two columns show the individual staleness; the compound value is used only for
-  ordering and is deliberately not rendered. Probes are skipped for excluded /
-  too-young repositories (they cannot appear in the table anyway), saving two
-  HTTP calls each.
+- **Hidden sort key (never displayed):** rows rank by release/tag staleness
+  alone; repository age only gates scope and never affects ordering. A
+  **missing** release or tag is treated as the worst possible signal, so a
+  repository missing one sorts above any fully-dated repository, and a
+  repository with **neither** a release nor a tag ranks highest of all.
+  Repositories with the same number of missing signals are then ordered by
+  their combined known staleness (oldest first), and ties break on repository
+  name. The two columns show the individual staleness; the sort key is used
+  only for ordering and is deliberately not rendered. Probes are skipped for
+  excluded / too-young repositories (they cannot appear in the table anyway),
+  saving two HTTP calls each.
 
 ## 5. Metrics, ranking and columns
 

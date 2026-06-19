@@ -252,7 +252,7 @@ def test_release_min_age_zero_includes_everything() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Releases / Tagging table + hidden compound score
+# Releases / Tagging table + staleness ranking
 # --------------------------------------------------------------------------- #
 def test_releases_table_excludes_young_and_named_repos() -> None:
     postures = [
@@ -270,17 +270,17 @@ def test_releases_table_excludes_young_and_named_repos() -> None:
     assert [r.repo.name for r in table.rows] == ["kept"]
 
 
-def test_releases_table_ranks_by_hidden_compound_score() -> None:
+def test_releases_table_ranks_by_staleness_missing_worst() -> None:
     postures = [
-        # release+tag both recent -> low compound (10 + 5 = 15)
+        # release + tag both present -> no missing signals (ranks lowest).
         posture.RepoPosture(
             repo=_repo("fresh-ish", age_days=400),
             latest_release_at=_ago(10),
             latest_tag_at=_ago(5),
         ),
-        # neither release nor tag -> age counted twice (200 + 200 = 400)
+        # neither release nor tag -> two missing signals (ranks highest).
         posture.RepoPosture(repo=_repo("never", age_days=200)),
-        # release recent, no tag -> 5 + age(300) = 305
+        # release present, no tag -> one missing signal (ranks in the middle).
         posture.RepoPosture(
             repo=_repo("no-tag", age_days=300), latest_release_at=_ago(5)
         ),
@@ -288,11 +288,51 @@ def test_releases_table_ranks_by_hidden_compound_score() -> None:
     table = posture.build_releases_table(
         postures, generated_at=NOW, repo_min_age_days=28, exclude=()
     )
-    # never (400) > no-tag (305) > fresh-ish (15)
+    # Ordered by number of missing signals: never (2) > no-tag (1) > fresh-ish.
     assert [r.repo.name for r in table.rows] == ["never", "no-tag", "fresh-ish"]
-    # The compound score is never displayed: only the two age columns appear.
+    # The ranking key is never displayed: only the two age columns appear.
     never = table.rows[0]
     assert never.cells == ("never", "never")
+
+
+def test_releases_table_never_ranks_top_regardless_of_repo_age() -> None:
+    # Regression: a repo with no release and no tag is the worst offender and
+    # must rank at the very top, even when it is far younger than repos that do
+    # have (old) releases and tags. Repository age gates scope only, never the
+    # row ordering.
+    postures = [
+        posture.RepoPosture(
+            repo=_repo("old-but-released", age_days=800),
+            latest_release_at=_ago(400),
+            latest_tag_at=_ago(400),
+        ),
+        posture.RepoPosture(repo=_repo("young-never", age_days=40)),
+    ]
+    table = posture.build_releases_table(
+        postures, generated_at=NOW, repo_min_age_days=28, exclude=()
+    )
+    assert [r.repo.name for r in table.rows] == [
+        "young-never",
+        "old-but-released",
+    ]
+
+
+def test_releases_table_never_repos_sorted_by_name() -> None:
+    # Several repos with neither a release nor a tag all rank at the top and,
+    # being tied, fall back to a stable alphabetical order.
+    postures = [
+        posture.RepoPosture(repo=_repo("zulu", age_days=300)),
+        posture.RepoPosture(repo=_repo("alpha", age_days=100)),
+        posture.RepoPosture(
+            repo=_repo("dated", age_days=400),
+            latest_release_at=_ago(90),
+            latest_tag_at=_ago(90),
+        ),
+    ]
+    table = posture.build_releases_table(
+        postures, generated_at=NOW, repo_min_age_days=28, exclude=()
+    )
+    assert [r.repo.name for r in table.rows] == ["alpha", "zulu", "dated"]
 
 
 def test_releases_table_age_cells_humanise() -> None:
