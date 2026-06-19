@@ -120,13 +120,13 @@ def truncate(items: Sequence[_T], top_n: int | None) -> tuple[list[_T], int]:
 
     The single place every render surface applies an offender limit, so the
     GitHub Pages, terminal and Slack outputs truncate tables and name lists
-    identically. ``top_n`` of ``None`` or a negative value (or one at least the
-    sequence length) shows everything and reports ``0`` hidden -- the negative
-    case is a defensive no-op, since negative slicing would otherwise drop
-    items from the end.
+    identically. ``top_n`` of ``None`` or any value of ``0`` or below shows
+    everything and reports ``0`` hidden: ``0`` is the documented "no limit"
+    setting, and the negative case is a defensive no-op (negative slicing would
+    otherwise drop items from the end).
     """
     seq = list(items)
-    if top_n is None or top_n < 0 or len(seq) <= top_n:
+    if top_n is None or top_n <= 0 or len(seq) <= top_n:
         return seq, 0
     return seq[:top_n], len(seq) - top_n
 

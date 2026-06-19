@@ -182,7 +182,8 @@ environment-variable name, never embedded.
 `top_n` controls how many offenders are shown per signal. It is the shared
 default for all three outputs; set any of `top_n_report` (GitHub Pages),
 `top_n_cli` (terminal), or `top_n_slack` (Slack digest) to override an
-individual output. Each can also be set at the CLI with `--top-n`,
+individual output. Set a value to `0` to remove the limit entirely and show
+every offender. Each can also be set at the CLI with `--top-n`,
 `--top-n-report`, `--top-n-cli`, and `--top-n-slack`.
 
 `report.release_min_age_days` (default `28`, `0` = include all) and the per-org
@@ -232,10 +233,10 @@ and the Slack **bot token** is consumed by the workflow, not the CLI.
 | `output_dir` | No | — | Directory for Pages output (org mode) |
 | `pages_url` | No | — | Published Pages URL (used in the Slack link) |
 | `slack_channel` | No | — | Slack channel ID; overrides the config `slack.channel` (e.g. the `SLACK_CHANNEL_ID` variable) |
-| `top_n` | No | `10` | Offenders per signal across all outputs (shared default) |
-| `top_n_report` | No | — | Offenders per signal in the GitHub Pages output (overrides `top_n`) |
-| `top_n_cli` | No | — | Offenders per signal in the terminal output (overrides `top_n`) |
-| `top_n_slack` | No | — | Offenders per signal in the Slack digest (overrides `top_n`) |
+| `top_n` | No | `10` | Offenders per signal across all outputs (shared default; `0` = no limit) |
+| `top_n_report` | No | — | Offenders per signal in the GitHub Pages output (`0` = no limit; overrides `top_n`) |
+| `top_n_cli` | No | — | Offenders per signal in the terminal output (`0` = no limit; overrides `top_n`) |
+| `top_n_slack` | No | — | Offenders per signal in the Slack digest (`0` = no limit; overrides `top_n`) |
 | `fail_threshold` | No | `none` | `none`/`low`/`medium`/`high`/`critical`/`any` (repo mode) |
 | `force_notify` | No | `false` | Post to Slack regardless of `report_day` |
 | `tool_version` | No | `0.1.0` | Published PyPI version (ignored on pull requests) |

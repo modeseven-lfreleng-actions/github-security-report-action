@@ -155,23 +155,29 @@ class TestBuildConfig:
         assert rc.cli_top_n == 10
         assert rc.slack_top_n == 3
 
-    def test_rejects_zero_top_n_category(self) -> None:
-        with pytest.raises(ConfigError):
-            config.build_config(
-                {
-                    "report": {"top_n_cli": 0},
-                    "organizations": [{"name": "o"}],
-                }
-            )
+    def test_zero_top_n_category_disables_limit(self) -> None:
+        rc = config.build_config(
+            {
+                "report": {"top_n_cli": 0},
+                "organizations": [{"name": "o"}],
+            }
+        ).organizations[0].report
+        assert rc.cli_top_n == 0  # 0 = no limit (show every offender)
 
     def test_requires_organizations(self) -> None:
         with pytest.raises(ConfigError):
             config.build_config({"slack": {}})
 
-    def test_rejects_zero_top_n(self) -> None:
+    def test_zero_top_n_disables_limit(self) -> None:
+        rc = config.build_config(
+            {"organizations": [{"name": "o"}], "report": {"top_n": 0}}
+        ).report
+        assert rc.top_n == 0  # 0 = no limit (show every offender)
+
+    def test_rejects_negative_top_n(self) -> None:
         with pytest.raises(ConfigError):
             config.build_config(
-                {"organizations": [{"name": "o"}], "report": {"top_n": 0}}
+                {"organizations": [{"name": "o"}], "report": {"top_n": -1}}
             )
 
 

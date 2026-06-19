@@ -266,16 +266,16 @@ def test_unresolvable_scope_errors() -> None:
     assert result.exit_code == 2
 
 
-def test_non_positive_top_n_rejected() -> None:
-    # --top-n must match the config schema minimum of 1.
-    result = cli.invoke(app, ["report", "--org", "o", "--top-n", "0", "--no-color"])
+def test_negative_top_n_rejected() -> None:
+    # --top-n must match the config schema minimum of 0 (0 = no limit).
+    result = cli.invoke(app, ["report", "--org", "o", "--top-n=-1", "--no-color"])
     assert result.exit_code == 2
     assert "top-n" in result.stdout
 
 
 @pytest.mark.parametrize("flag", ["--top-n-report", "--top-n-cli", "--top-n-slack"])
-def test_non_positive_per_category_top_n_rejected(flag: str) -> None:
-    result = cli.invoke(app, ["report", "--org", "o", flag, "0", "--no-color"])
+def test_negative_per_category_top_n_rejected(flag: str) -> None:
+    result = cli.invoke(app, ["report", "--org", "o", f"{flag}=-1", "--no-color"])
     assert result.exit_code == 2
     assert flag in result.stdout
 

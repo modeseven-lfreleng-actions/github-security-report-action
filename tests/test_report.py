@@ -131,6 +131,10 @@ class TestTruncate:
     def test_no_limit_returns_all(self) -> None:
         assert report.truncate([1, 2, 3], None) == ([1, 2, 3], 0)
 
+    def test_zero_limit_returns_all(self) -> None:
+        # 0 is the documented "no limit" setting: show everything, hide nothing.
+        assert report.truncate([1, 2, 3], 0) == ([1, 2, 3], 0)
+
     def test_under_limit_returns_all(self) -> None:
         assert report.truncate([1, 2], 5) == ([1, 2], 0)
 

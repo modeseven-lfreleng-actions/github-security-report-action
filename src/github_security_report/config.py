@@ -66,10 +66,12 @@ CONFIG_SCHEMA: dict = {
             "type": "object",
             "additionalProperties": False,
             "properties": {
-                "top_n": {"type": "integer", "minimum": 1},
-                "top_n_report": {"type": "integer", "minimum": 1},
-                "top_n_cli": {"type": "integer", "minimum": 1},
-                "top_n_slack": {"type": "integer", "minimum": 1},
+                # 0 disables the per-signal offender limit (show everything);
+                # any positive value caps each table/list at that many rows.
+                "top_n": {"type": "integer", "minimum": 0},
+                "top_n_report": {"type": "integer", "minimum": 0},
+                "top_n_cli": {"type": "integer", "minimum": 0},
+                "top_n_slack": {"type": "integer", "minimum": 0},
                 "include_archived": {"type": "boolean"},
                 "include_test": {"type": "boolean"},
                 "release_min_age_days": {"type": "integer", "minimum": 0},
@@ -139,7 +141,8 @@ DEFAULT_RULESET_WORKFLOWS = {"zizmor": "zizmor"}
 class ReportConfig:
     # Shared default number of offenders shown per signal; per-output overrides
     # below take precedence when set. report = GitHub Pages (Markdown + HTML),
-    # cli = terminal, slack = the Slack digest.
+    # cli = terminal, slack = the Slack digest. A value of 0 disables the limit
+    # for that output (every offender is shown).
     top_n: int = 10
     top_n_report: int | None = None
     top_n_cli: int | None = None
