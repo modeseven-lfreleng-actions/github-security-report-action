@@ -61,6 +61,10 @@ def test_offenders_are_code_fenced() -> None:
     codeql = next(b for b in blocks if "CodeQL" in b.get("text", {}).get("text", ""))
     assert "```" in codeql["text"]["text"]
     assert "bad" in codeql["text"]["text"]
+    # The fixed-width header capitalises the repository column for consistency
+    # with the posture/release tables and the other render surfaces.
+    assert "Repository" in codeql["text"]["text"]
+    assert "repo " not in codeql["text"]["text"]
 
 
 def test_top_n_limits_code_fence_rows() -> None:

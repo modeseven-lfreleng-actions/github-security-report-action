@@ -25,10 +25,10 @@ _SLACK_MAX_BLOCKS = 50
 
 def _plain_columns(signal: SignalType) -> list[str]:
     if signal is SignalType.SECRET_SCANNING:
-        return ["repo", "open"]
+        return ["Repository", "open"]
     if signal is SignalType.SCORECARD:
-        return ["repo", "score", "C", "H", "M", "L"]
-    return ["repo", "C", "H", "M", "L"]
+        return ["Repository", "score", "C", "H", "M", "L"]
+    return ["Repository", "C", "H", "M", "L"]
 
 
 def _plain_row(sig: RepoSignal) -> list[str]:
