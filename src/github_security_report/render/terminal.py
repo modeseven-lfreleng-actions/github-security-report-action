@@ -118,8 +118,17 @@ def render_table_section(
 ) -> None:
     """Render a generic posture/freshness table to the terminal."""
     rows, hidden = truncate(section.rows, top_n)
+    # A count summary is printed as its own heading line (not the rich table
+    # title) so a long summary is never wrapped to a narrow table's width.
+    title = section.title
+    if section.summary:
+        title = f"{title} — {section.summary}"
     if rows:
-        table = Table(title=section.title, title_justify="left", title_style="bold")
+        if section.summary:
+            console.print(f"[bold]{title}[/bold]")
+            table = Table(title_justify="left", title_style="bold")
+        else:
+            table = Table(title=title, title_justify="left", title_style="bold")
         for i, col in enumerate(section.columns):
             table.add_column(col, overflow="fold", justify="left" if i == 0 else "right")
         for row in rows:
@@ -133,7 +142,7 @@ def render_table_section(
             for sentence in _split_sentences(section.note):
                 console.print(f"  [dim]{sentence}[/dim]")
     else:
-        console.print(f"[bold]{section.title}[/bold]")
+        console.print(f"[bold]{title}[/bold]")
         if section.empty_note:
             console.print(f"  [green]✅ {section.empty_note}[/green]")
     console.print()
@@ -154,6 +163,8 @@ def render_org(org: OrgReport, console: Console, *, top_n: int | None = None) ->
                 render_table_section(table, console, top_n=top_n)
     if org.releases is not None:
         render_table_section(org.releases, console, top_n=top_n)
+    if org.mutable_releases is not None:
+        render_table_section(org.mutable_releases, console, top_n=top_n)
 
 
 def render_orgs(

@@ -72,6 +72,7 @@ def _table_context(section: TableSection, top_n: int | None = None) -> dict:
         "hidden": hidden,
         "empty_note": section.empty_note,
         "note": section.note,
+        "summary": section.summary,
     }
 
 
@@ -119,6 +120,11 @@ def render_org_html(org: OrgReport, *, top_n: int | None = None) -> str:
             excluded_hidden=excluded_hidden,
             sections=sections,
             releases=_table_context(org.releases, top_n) if org.releases else None,
+            mutable_releases=(
+                _table_context(org.mutable_releases, top_n)
+                if org.mutable_releases
+                else None
+            ),
             datatables_version=DATATABLES_VERSION,
             datatables_css_sri=DATATABLES_CSS_SRI,
             datatables_js_sri=DATATABLES_JS_SRI,

@@ -81,6 +81,9 @@ class TableSection:
     empty_note: str = ""
     # Optional explanatory footnote rendered beneath the table.
     note: str = ""
+    # Optional one-line count summary appended to the heading (e.g.
+    # "2 with findings, 82 clean"). Empty for tables that show no summary.
+    summary: str = ""
 
 
 @dataclass
@@ -104,6 +107,9 @@ class OrgReport:
     # not collected (repo mode); org mode always assigns a section, which may
     # have zero rows and render its empty_note instead.
     releases: TableSection | None = None
+    # The Mutable Releases table: repositories whose "Latest" or last-published
+    # release is not immutable. None in repo mode / when not collected.
+    mutable_releases: TableSection | None = None
 
 
 @dataclass

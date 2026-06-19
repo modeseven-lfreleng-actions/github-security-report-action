@@ -171,6 +171,21 @@ class TestExtraTables:
         assert "## Releases / Tagging" in out
         assert "| [z](https://github.com/o/z) | never | never |" in out
 
+    def test_org_renders_mutable_releases_with_summary(self) -> None:
+        org = _org([], count=84)
+        org.mutable_releases = report.TableSection(
+            title="Mutable Releases",
+            columns=("Repository", "Releases"),
+            rows=[report.TableRow(repo=_repo("img"), cells=("v0.1.0 (latest)",))],
+            note="Recent releases in the repositories above are not immutable.",
+            summary="2 with findings, 82 clean",
+        )
+        out = markdown.render_org(org)
+        # The count summary is appended to the heading.
+        assert "## Mutable Releases — 2 with findings, 82 clean" in out
+        assert "| [img](https://github.com/o/img) | v0.1.0 (latest) |" in out
+        assert "_Recent releases in the repositories above are not immutable._" in out
+
     def test_org_shows_excluded_repos(self) -> None:
         org = _org([], count=2)
         org.excluded_repos = [_repo("opted-out")]

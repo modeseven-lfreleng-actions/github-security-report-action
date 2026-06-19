@@ -7,7 +7,7 @@ from __future__ import annotations
 import datetime as dt
 
 from github_security_report import posture
-from github_security_report.models import Repo
+from github_security_report.models import ReleaseRef, Repo
 
 NOW = dt.datetime(2026, 6, 18, 12, 0, tzinfo=dt.timezone.utc)
 
@@ -216,3 +216,125 @@ def test_releases_table_age_cells_humanise() -> None:
         postures, generated_at=NOW, min_age_days=28, exclude=()
     )
     assert table.rows[0].cells == ("today", "1 day ago")
+
+
+# --------------------------------------------------------------------------- #
+# Mutable Releases table
+# --------------------------------------------------------------------------- #
+def _release(
+    tag: str,
+    *,
+    immutable: bool,
+    published: int = 0,
+    latest: bool = False,
+    prerelease: bool = False,
+) -> ReleaseRef:
+    return ReleaseRef(
+        tag=tag,
+        immutable=immutable,
+        published_at=_ago(published),
+        is_latest=latest,
+        is_prerelease=prerelease,
+    )
+
+
+def test_mutable_releases_flags_mutable_latest() -> None:
+    postures = [
+        posture.RepoPosture(
+            repo=_repo("docker-save-images-action"),
+            latest_release=_release("v0.1.0", immutable=False, latest=True),
+            last_published_release=_release("v0.1.0", immutable=False, latest=True),
+        ),
+    ]
+    table = posture.build_mutable_releases_table(postures)
+    assert table.title == "Mutable Releases"
+    assert table.columns == ("Repository", "Releases")
+    assert [r.repo.name for r in table.rows] == ["docker-save-images-action"]
+    # The duplicate tag is collapsed and annotated with the latest badge.
+    assert table.rows[0].cells == ("v0.1.0 (latest)",)
+    assert table.summary == "1 with findings, 0 clean"
+    assert table.note == "Recent releases in the repositories above are not immutable."
+
+
+def test_mutable_releases_lists_newer_prerelease_first() -> None:
+    # A newer mutable pre-release ahead of a mutable "Latest" release: both are
+    # listed, most-recent first, with only the latest annotated.
+    postures = [
+        posture.RepoPosture(
+            repo=_repo("packer-build-action"),
+            latest_release=_release(
+                "v0.9.0", immutable=False, published=30, latest=True
+            ),
+            last_published_release=_release(
+                "v1.0.0-alpha1", immutable=False, published=5, prerelease=True
+            ),
+        ),
+    ]
+    table = posture.build_mutable_releases_table(postures)
+    assert table.rows[0].cells == ("v1.0.0-alpha1, v0.9.0 (latest)",)
+    assert table.summary == "1 with findings, 0 clean"
+
+
+def test_mutable_releases_immutable_latest_is_clean() -> None:
+    # An immutable latest with no newer mutable release is not flagged, and is
+    # counted as clean.
+    postures = [
+        posture.RepoPosture(
+            repo=_repo("safe"),
+            latest_release=_release("v2.0.0", immutable=True, latest=True),
+            last_published_release=_release("v2.0.0", immutable=True, latest=True),
+        ),
+    ]
+    table = posture.build_mutable_releases_table(postures)
+    assert table.rows == []
+    assert table.summary == "0 with findings, 1 clean"
+    assert table.empty_note
+
+
+def test_mutable_releases_flags_only_mutable_of_the_pair() -> None:
+    # An immutable "Latest" with a newer mutable pre-release: only the mutable
+    # pre-release is listed, but the repo still counts as a finding.
+    postures = [
+        posture.RepoPosture(
+            repo=_repo("mixed"),
+            latest_release=_release(
+                "v1.0.0", immutable=True, published=20, latest=True
+            ),
+            last_published_release=_release(
+                "v1.1.0-rc1", immutable=False, published=2, prerelease=True
+            ),
+        ),
+    ]
+    table = posture.build_mutable_releases_table(postures)
+    assert table.rows[0].cells == ("v1.1.0-rc1",)
+    assert table.summary == "1 with findings, 0 clean"
+
+
+def test_mutable_releases_repo_without_releases_is_neither() -> None:
+    # A repo with no releases is counted as neither a finding nor clean.
+    postures = [
+        posture.RepoPosture(repo=_repo("no-releases")),
+        posture.RepoPosture(
+            repo=_repo("flagged"),
+            latest_release=_release("v1.0.0", immutable=False, latest=True),
+        ),
+    ]
+    table = posture.build_mutable_releases_table(postures)
+    assert [r.repo.name for r in table.rows] == ["flagged"]
+    assert table.summary == "1 with findings, 0 clean"
+
+
+def test_mutable_releases_rows_sorted_by_repo_name() -> None:
+    postures = [
+        posture.RepoPosture(
+            repo=_repo("zeta"),
+            latest_release=_release("v1", immutable=False, latest=True),
+        ),
+        posture.RepoPosture(
+            repo=_repo("alpha"),
+            latest_release=_release("v2", immutable=False, latest=True),
+        ),
+    ]
+    table = posture.build_mutable_releases_table(postures)
+    assert [r.repo.name for r in table.rows] == ["alpha", "zeta"]
+    assert table.summary == "2 with findings, 0 clean"

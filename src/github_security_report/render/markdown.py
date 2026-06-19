@@ -105,7 +105,10 @@ def render_table_section(
 ) -> str:
     """Render a generic posture/freshness table at the given heading level."""
     heading = "#" * level
-    lines = [f"{heading} {section.title}", ""]
+    title = section.title
+    if section.summary:
+        title = f"{title} — {section.summary}"
+    lines = [f"{heading} {title}", ""]
     rows, hidden = truncate(section.rows, top_n)
     if rows:
         aligns = ["---"] * len(section.columns)
@@ -162,6 +165,8 @@ def render_org(org: OrgReport, *, top_n: int | None = None) -> str:
             )
     if org.releases is not None:
         parts.append(render_table_section(org.releases, level=2, top_n=top_n))
+    if org.mutable_releases is not None:
+        parts.append(render_table_section(org.mutable_releases, level=2, top_n=top_n))
     return "\n".join(parts).rstrip() + "\n"
 
 

@@ -105,9 +105,12 @@ def _table_block(section: TableSection, top_n: int) -> dict | None:
     table = _fixed_table_generic(section.columns, rows)
     if hidden:
         table += f"\n… and {hidden} more"
+    title = section.title
+    if section.summary:
+        title = f"{title} — {section.summary}"
     return {
         "type": "section",
-        "text": {"type": "mrkdwn", "text": f"*{section.title}*\n```\n{table}\n```"},
+        "text": {"type": "mrkdwn", "text": f"*{title}*\n```\n{table}\n```"},
     }
 
 
@@ -164,6 +167,10 @@ def render_org_blocks(org: OrgReport, *, top_n: int, pages_url: str | None) -> l
                     blocks.append(block)
     if org.releases is not None:
         block = _table_block(org.releases, top_n)
+        if block is not None:
+            blocks.append(block)
+    if org.mutable_releases is not None:
+        block = _table_block(org.mutable_releases, top_n)
         if block is not None:
             blocks.append(block)
     if pages_url:

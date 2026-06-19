@@ -318,6 +318,7 @@ async def collect_org(
         min_age_days=report_cfg.release_min_age_days,
         exclude=org_cfg.releases_exclude,
     )
+    report.mutable_releases = posture.build_mutable_releases_table(postures)
     # The "Alerts Not Enabled" sub-table carries the repositories with Dependabot
     # alerts disabled, so drop them from the Dependabot signal section's nag list
     # to avoid listing the same repositories twice under the one heading.

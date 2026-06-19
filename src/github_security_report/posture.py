@@ -32,6 +32,10 @@ from github_security_report.report import TableRow, TableSection
 
 log = logging.getLogger(__name__)
 
+# Aware sentinel so releases lacking a publish timestamp sort oldest (last) when
+# ordering most-recent-first, without ever comparing a naive and aware value.
+_MIN_AWARE = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
+
 
 @dataclass
 class RepoPosture:
@@ -255,12 +259,67 @@ def build_releases_table(
     )
 
 
+def build_mutable_releases_table(postures: list[RepoPosture]) -> TableSection:
+    """Repositories whose "Latest" or last-published release is not immutable.
+
+    Both the release carrying GitHub's "Latest" badge and the most recently
+    published release are checked; whichever are mutable are listed (a repo can
+    have a newer mutable pre-release ahead of a mutable "Latest" release, so
+    more than one entry may appear). Duplicate tags are collapsed and the
+    "Latest" entry is annotated ``(latest)``. The heading summary counts
+    repositories with findings against those whose checked releases are all
+    immutable; repositories with no releases to check are counted as neither.
+    """
+    flagged: list[tuple[RepoPosture, list[ReleaseRef]]] = []
+    checked = 0
+    for posture in postures:
+        seen: set[str] = set()
+        candidates: list[ReleaseRef] = []
+        for ref in (posture.latest_release, posture.last_published_release):
+            if ref is not None and ref.tag not in seen:
+                seen.add(ref.tag)
+                candidates.append(ref)
+        if not candidates:
+            continue  # no releases to check: neither a finding nor clean
+        checked += 1
+        mutable = [ref for ref in candidates if not ref.immutable]
+        if mutable:
+            flagged.append((posture, mutable))
+
+    rows: list[TableRow] = []
+    for posture, mutable in sorted(flagged, key=lambda item: item[0].repo.name):
+        ordered = sorted(
+            mutable,
+            key=lambda ref: ref.published_at or _MIN_AWARE,
+            reverse=True,  # most recent first
+        )
+        labels = [
+            f"{ref.tag} (latest)" if ref.is_latest else ref.tag for ref in ordered
+        ]
+        rows.append(TableRow(repo=posture.repo, cells=(", ".join(labels),)))
+
+    finding_count = len(flagged)
+    clean_count = checked - finding_count
+    return TableSection(
+        title="Mutable Releases",
+        columns=("Repository", "Releases"),
+        rows=rows,
+        empty_note=(
+            "Every checked repository's latest and last-published releases are "
+            "immutable."
+        ),
+        note="Recent releases in the repositories above are not immutable.",
+        summary=f"{finding_count} with findings, {clean_count} clean",
+    )
+
+
 __all__ = [
     "RepoPosture",
     "is_release_excluded",
     "cooldown_missing_ecosystems",
     "build_dependabot_tables",
     "build_releases_table",
+    "build_mutable_releases_table",
     "build_alerts_table",
     "build_security_updates_table",
     "build_cooldown_table",

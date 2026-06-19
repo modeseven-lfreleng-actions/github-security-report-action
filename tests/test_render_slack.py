@@ -119,6 +119,22 @@ def test_dependabot_and_releases_tables_rendered() -> None:
     assert any("Releases / Tagging" in t and "stale" in t for t in texts)
 
 
+def test_mutable_releases_block_shows_summary() -> None:
+    org = _org([], count=84)
+    org.mutable_releases = report.TableSection(
+        title="Mutable Releases",
+        columns=("Repository", "Releases"),
+        rows=[report.TableRow(repo=_repo("img"), cells=("v0.1.0 (latest)",))],
+        note="Recent releases in the repositories above are not immutable.",
+        summary="2 with findings, 82 clean",
+    )
+    blocks = slack.render_org_blocks(org, top_n=10, pages_url=None)
+    texts = [b.get("text", {}).get("text", "") for b in blocks]
+    block = next(t for t in texts if "Mutable Releases" in t)
+    assert "*Mutable Releases — 2 with findings, 82 clean*" in block
+    assert "img" in block and "v0.1.0 (latest)" in block
+
+
 def test_empty_extra_tables_are_skipped() -> None:
     org = _org([], count=1)
     org.dependabot_tables = [

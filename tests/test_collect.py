@@ -399,6 +399,12 @@ async def test_collect_org_attaches_dependabot_tables_and_releases() -> None:
         "git-configure-action",
     }
 
+    # The Mutable Releases section is attached (no release data in this fake, so
+    # it reports nothing flagged).
+    assert report.mutable_releases is not None
+    assert report.mutable_releases.title == "Mutable Releases"
+    assert report.mutable_releases.rows == []
+
 
 async def test_collect_org_releases_exclude_and_min_age() -> None:
     class AgedPostureClient(PostureClient):

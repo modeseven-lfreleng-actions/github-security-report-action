@@ -94,6 +94,24 @@ class TestOrgHtml:
         assert '<a href="https://github.com/o/stale">stale</a>' in out
         assert "Ranked by combined staleness." in out
 
+    def test_renders_mutable_releases_with_summary(self) -> None:
+        org = _org("o", [], count=84)
+        org.mutable_releases = report.TableSection(
+            title="Mutable Releases",
+            columns=("Repository", "Releases"),
+            rows=[report.TableRow(repo=_repo("img"), cells=("v0.1.0 (latest)",))],
+            note="Recent releases in the repositories above are not immutable.",
+            summary="2 with findings, 82 clean",
+        )
+        out = html.render_org_html(org)
+        assert "<h2>Mutable Releases — 2 with findings, 82 clean</h2>" in out
+        assert '<a href="https://github.com/o/img">img</a>' in out
+        assert "v0.1.0 (latest)" in out
+        assert (
+            '<p class="note">Recent releases in the repositories above are not '
+            "immutable.</p>" in out
+        )
+
     def test_renders_excluded_banner(self) -> None:
         org = _org("o", [], count=3)
         org.excluded_repos = [_repo("opted-out")]

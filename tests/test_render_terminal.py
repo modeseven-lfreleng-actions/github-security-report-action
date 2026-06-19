@@ -102,6 +102,21 @@ def test_dependabot_tables_and_releases_rendered() -> None:
     assert "stale" in out
 
 
+def test_mutable_releases_rendered_with_summary() -> None:
+    org = _org([], count=84)
+    org.mutable_releases = report.TableSection(
+        title="Mutable Releases",
+        columns=("Repository", "Releases"),
+        rows=[report.TableRow(repo=_repo("img"), cells=("v0.1.0 (latest)",))],
+        note="Recent releases in the repositories above are not immutable.",
+        summary="2 with findings, 82 clean",
+    )
+    out = _render(org)
+    assert "Mutable Releases" in out
+    assert "2 with findings, 82 clean" in out
+    assert "img" in out
+
+
 def test_excluded_repos_shown_under_each_section_with_count() -> None:
     signals = [RepoSignal(_repo("clean"), SignalType.CODEQL, RepoState.CLEAN)]
     org = _org(signals, count=5)
