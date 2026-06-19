@@ -26,9 +26,9 @@ _SLACK_MAX_BLOCKS = 50
 
 def _plain_columns(signal: SignalType) -> list[str]:
     if signal is SignalType.SECRET_SCANNING:
-        return ["Repository", "open"]
+        return ["Repository", "Open"]
     if signal is SignalType.SCORECARD:
-        return ["Repository", "score", "C", "H", "M", "L"]
+        return ["Repository", "Score", "C", "H", "M", "L"]
     return ["Repository", "C", "H", "M", "L"]
 
 
@@ -134,6 +134,12 @@ def _table_block(section: TableSection, top_n: int) -> dict | None:
     # The count summary is placed on its own line beneath the table rather than
     # inline with the title, matching every other category.
     text = f"*{section.title}*\n```\n{table}\n```"
+    # Surface the explanatory note outside the code fence, before the summary,
+    # so Slack users get the same guidance text as the Markdown/terminal/HTML
+    # renderers. The note only describes a populated table, which is always the
+    # case here (empty tables return None above).
+    if section.note:
+        text += f"\n{section.note}"
     if section.summary:
         text += f"\n{section.summary}"
     return {

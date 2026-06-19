@@ -148,9 +148,11 @@ reported in **two separate columns** as a human "last release / last tag" age.
   Repositories with the same number of missing signals are then ordered by
   their combined known staleness (oldest first), and ties break on repository
   name. The two columns show the individual staleness; the sort key is used
-  only for ordering and is deliberately not rendered. Probes are skipped for
-  excluded / too-young repositories (they cannot appear in the table anyway),
-  saving two HTTP calls each.
+  only for ordering and is deliberately not rendered. Release and tag data are
+  gathered for every in-scope repository through the batched GraphQL prefetch;
+  the repository-age grace period and `releases_exclude` are then applied when
+  the Releases/Tagging table is built, rather than skipping per-repository
+  probes up front.
 
 ## 5. Metrics, ranking and columns
 

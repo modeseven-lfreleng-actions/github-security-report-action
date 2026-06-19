@@ -22,13 +22,14 @@ through each repository's settings:
 - ``GET /repos/{owner}/{repo}/automated-security-fixes`` -> current state
   (``{"enabled": bool, "paused": bool}``).
 
-Scope mirrors the reporting tool exactly (see
+By default the scope matches the reporting tool (see
 ``src/github_security_report/scope.py``): forks, templates, archived repos,
 explicitly-excluded repos and *test* repositories (a token-delimited ``test``/
 ``tests`` segment) are skipped. Empty repositories -- those with no code -- are
-skipped too, since enabling the feature on them is pointless. Pass ``--config``
-to read the org name and exclusions straight from the tool's JSON config so the
-two never drift.
+skipped too (the reporting tool already drops them at the listing stage); the
+``--include-empty`` flag overrides this and deliberately acts on repositories
+the report never includes. Pass ``--config`` to read the org name and
+exclusions straight from the tool's JSON config so the two never drift.
 
 Safety
 ------

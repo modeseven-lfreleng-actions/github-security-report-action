@@ -488,7 +488,10 @@ def test_mutable_releases_immutable_latest_is_clean() -> None:
     table = posture.build_mutable_releases_table(postures)
     assert table.rows == []
     assert table.summary == "1 clean"
-    assert table.empty_note
+    # With no indeterminate repositories the assertive empty note is accurate.
+    assert table.empty_note == (
+        "Every checked repository's latest and last-published releases are immutable."
+    )
 
 
 def test_mutable_releases_flags_only_mutable_of_the_pair() -> None:
@@ -553,6 +556,12 @@ def test_mutable_releases_indeterminate_immutable_is_neither() -> None:
     assert table.rows == []
     # Neither a finding nor clean -> both counts zero -> no summary rendered.
     assert table.summary == ""
+    # The empty note must not over-claim immutability when a checked repo's
+    # state is indeterminate; it is softened to a non-assertive statement.
+    assert table.empty_note == (
+        "No checked repository has a confirmed-mutable latest or "
+        "last-published release."
+    )
 
 
 def test_mutable_releases_confirmed_mutable_alongside_unknown_is_flagged() -> None:

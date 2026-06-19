@@ -374,10 +374,13 @@ def build_mutable_releases_table(postures: list[RepoPosture]) -> TableSection:
     repositories with findings against those whose checked releases are all
     immutable; repositories with no releases to check, or whose checked
     releases have only an indeterminate (unknown) immutability state, are
-    counted as neither.
+    counted as neither. When any checked repository's immutability is
+    indeterminate the empty note is softened, so an empty table never
+    over-claims that every checked release is immutable.
     """
     flagged: list[tuple[RepoPosture, list[ReleaseRef]]] = []
     clean_count = 0
+    indeterminate_count = 0
     for posture in postures:
         seen: set[str] = set()
         candidates: list[ReleaseRef] = []
@@ -394,8 +397,10 @@ def build_mutable_releases_table(postures: list[RepoPosture]) -> TableSection:
             flagged.append((posture, mutable))
         elif all(ref.immutable is True for ref in candidates):
             clean_count += 1
-        # else: at least one release's immutability is unknown and none is
-        # confirmed mutable -> indeterminate, counted as neither.
+        else:
+            # at least one release's immutability is unknown and none is
+            # confirmed mutable -> indeterminate, counted as neither.
+            indeterminate_count += 1
 
     rows: list[TableRow] = []
     for posture, mutable in sorted(flagged, key=lambda item: item[0].repo.name):
@@ -417,6 +422,9 @@ def build_mutable_releases_table(postures: list[RepoPosture]) -> TableSection:
         empty_note=(
             "Every checked repository's latest and last-published releases are "
             "immutable."
+            if indeterminate_count == 0
+            else "No checked repository has a confirmed-mutable latest or "
+            "last-published release."
         ),
         note="Recent releases in the repositories above are not immutable.",
         summary=_posture_summary(

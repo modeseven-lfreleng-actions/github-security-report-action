@@ -141,6 +141,11 @@ def test_mutable_releases_block_shows_summary() -> None:
     assert "*Mutable Releases —" not in block
     assert "\n2 with findings, 82 clean" in block
     assert "img" in block and "v0.1.0 (latest)" in block
+    # The explanatory note is surfaced (outside the code fence) like the other
+    # renderers, before the summary line.
+    note = "Recent releases in the repositories above are not immutable."
+    assert note in block
+    assert block.index(note) < block.index("2 with findings, 82 clean")
 
 
 def test_empty_extra_tables_are_skipped() -> None:
@@ -191,3 +196,34 @@ def test_secret_scanning_has_no_totals_row() -> None:
     heading = SignalType.SECRET_SCANNING.heading
     secret = next(b for b in blocks if heading in b["text"]["text"])
     assert "Total" not in secret["text"]["text"]
+
+
+def test_table_headers_are_title_case() -> None:
+    # Slack headers must be capitalised consistently ("Open"/"Score"), matching
+    # the "Repository" column and the other render surfaces.
+    secret_sig = RepoSignal(
+        _repo("leaky"),
+        SignalType.SECRET_SCANNING,
+        RepoState.OFFENDER,
+        SeverityCounts(critical=4),
+    )
+    score_sig = RepoSignal(
+        _repo("scored"),
+        SignalType.SCORECARD,
+        RepoState.OFFENDER,
+        SeverityCounts(high=1),
+        score=6.5,
+    )
+    blocks = slack.render_org_blocks(
+        _org([secret_sig, score_sig], count=2), top_n=10, pages_url=None
+    )
+    secret = next(
+        b for b in blocks if SignalType.SECRET_SCANNING.heading in b["text"]["text"]
+    )
+    assert "Open" in secret["text"]["text"]
+    assert " open " not in secret["text"]["text"]
+    scorecard = next(
+        b for b in blocks if SignalType.SCORECARD.heading in b["text"]["text"]
+    )
+    assert "Score" in scorecard["text"]["text"]
+    assert " score " not in scorecard["text"]["text"]

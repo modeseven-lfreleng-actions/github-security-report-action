@@ -18,11 +18,14 @@ drives three REST endpoints per repository:
 - `GET /repos/{owner}/{repo}/automated-security-fixes` — current state, read
   before and after each change.
 
-Scope mirrors the reporting tool exactly (it reuses the same fork / template /
-archived / test-name / explicit-exclude rules from
+By default the scope matches the reporting tool (it reuses the same fork /
+template / archived / test-name / explicit-exclude rules from
 [`../src/github_security_report/scope.py`](../src/github_security_report/scope.py)),
-and additionally skips empty repositories. Pass `--config` to read the org name
-and exclusions straight from the tool's JSON config so the two never drift.
+and likewise skips empty repositories, which the reporting tool already drops
+at the listing stage. The `--include-empty` flag deliberately widens that scope
+to act on empty repositories the report never includes. Pass `--config` to read
+the org name and exclusions straight from the tool's JSON config so the two
+never drift.
 
 It is a self-contained [PEP 723](https://peps.python.org/pep-0723/) script; `uv`
 resolves its inline dependencies (`httpx`, `rich`) on the fly.
