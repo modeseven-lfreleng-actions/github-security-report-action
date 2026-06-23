@@ -242,7 +242,10 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
 
     for org_cfg, org_report in pairs:
         term_render.render_org(
-            org_report, console, top_n=_limit(org_cfg, top_n_cli, "cli_top_n")
+            org_report,
+            console,
+            top_n=_limit(org_cfg, top_n_cli, "cli_top_n"),
+            show_notes=org_cfg.report.cli_notes,
         )
 
     if output_dir:

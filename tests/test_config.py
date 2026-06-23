@@ -159,6 +159,20 @@ class TestBuildConfig:
         org = config.build_config(data).organizations[0]
         assert org.report.private_vulnerability_reporting is True
 
+    def test_cli_notes_default_on_and_override(self) -> None:
+        # On by default; an org-level opt-out suppresses the CLI footnotes.
+        assert config.build_config(MINIMAL).report.cli_notes is True
+        data = {
+            "organizations": [
+                {
+                    "name": "o",
+                    "report": {"cli_notes": False},
+                },
+            ],
+        }
+        org = config.build_config(data).organizations[0]
+        assert org.report.cli_notes is False
+
     def test_releases_exclude_parsed(self) -> None:
         data = {
             "organizations": [

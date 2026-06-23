@@ -150,6 +150,29 @@ def test_name_list_feature_drops_table_for_status_footer() -> None:
     assert "┃" not in section
 
 
+def test_show_notes_false_suppresses_explanatory_lines() -> None:
+    # report.cli_notes=False drops the guidance footnotes from every section
+    # while keeping the table, the status footer and the heading.
+    org = _org([], count=85)
+    org.releases = report.TableSection(
+        title="Releases / Tagging",
+        columns=("Repository", "Last release", "Last tag"),
+        rows=[report.TableRow(repo=_repo("stale"), cells=("never", "never"))],
+        note="Repositories created within 21 day(s) are excluded. Ranked by staleness.",
+        clean_count=74,
+        flagged_noun="Stale",
+    )
+    console = Console(record=True, width=120, no_color=True)
+    terminal.render_org(org, console, show_notes=False)
+    out = console.export_text()
+    # Table, heading and status footer remain; the guidance note is gone.
+    assert "Releases / Tagging" in out
+    assert "stale" in out
+    assert "74 Clean" in out
+    assert "Ranked by staleness." not in out
+    assert "Repositories created within" not in out
+
+
 def test_excluded_repos_shown_under_each_section_with_count() -> None:
     signals = [RepoSignal(_repo("clean"), SignalType.CODEQL, RepoState.CLEAN)]
     org = _org(signals, count=5)

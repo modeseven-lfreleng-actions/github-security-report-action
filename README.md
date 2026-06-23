@@ -187,7 +187,8 @@ environment-variable name, never embedded.
     "include_test": false,
     "repo_min_age_days": 28,
     "release_max_age_days": 0,
-    "private_vulnerability_reporting": false
+    "private_vulnerability_reporting": false,
+    "cli_notes": true
   },
   "organizations": [
     {
@@ -225,6 +226,11 @@ The Releases / Tagging section has two independent freshness levers:
   **Private Vulnerability Reporting** section, which lists repositories where
   the feature is not enabled. It is off by default because it adds one
   per-repository REST probe (no org-wide or GraphQL equivalent exists).
+- `report.cli_notes` (default `true`) controls the explanatory footnote lines
+  shown beneath each section in the terminal output (scope and ranking
+  guidance). Set it to `false` for a terser local view that keeps the tables
+  and the ✅/❌ status footer but drops the guidance. It affects the terminal
+  output only; the GitHub Pages, Markdown, and Slack outputs are unchanged.
 
 The per-org `releases_exclude` (CLI `--releases-exclude`, repeatable) drops
 named repositories from the section entirely.

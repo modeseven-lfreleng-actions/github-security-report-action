@@ -141,6 +141,7 @@ def render_table_section(
     *,
     excluded: Sequence[Repo] = (),
     top_n: int | None = None,
+    show_notes: bool = True,
 ) -> None:
     """Render a generic posture/freshness section to the terminal.
 
@@ -152,6 +153,10 @@ def render_table_section(
     multi-column section keeps its data table (the extra columns -- ages,
     ecosystems, release tags -- cannot be expressed as counts) and shows the
     same count footer beneath it.
+
+    ``show_notes`` gates the explanatory footnote lines (scope/ranking
+    guidance); set it False (via ``report.cli_notes``) for a terser view that
+    keeps the tables and the status footer but drops the guidance.
     """
     rows, hidden = truncate(section.rows, top_n)
     name_list = len(section.columns) == 1
@@ -192,14 +197,21 @@ def render_table_section(
             console.print(f"  [blue]Excluded:[/blue] {_names(excluded, top_n)}")
 
     # The guidance note describes a populated result, so it is shown only when
-    # there are flagged repositories (mirrors the previous table-only note).
-    if section.rows and section.note:
+    # there are flagged repositories (mirrors the previous table-only note) and
+    # the caller has not suppressed notes via ``report.cli_notes``.
+    if show_notes and section.rows and section.note:
         for sentence in note_sentences(section.note):
             console.print(f"  [dim]{sentence}[/dim]")
     console.print()
 
 
-def render_org(org: OrgReport, console: Console, *, top_n: int | None = None) -> None:
+def render_org(
+    org: OrgReport,
+    console: Console,
+    *,
+    top_n: int | None = None,
+    show_notes: bool = True,
+) -> None:
     console.rule(f"[bold]Security report: {org.org}[/bold]")
     console.print(f"[dim]{org.repo_count} repositories analysed[/dim]\n")
     if org.partial:
@@ -212,12 +224,28 @@ def render_org(org: OrgReport, console: Console, *, top_n: int | None = None) ->
         render_section(section, console, excluded=excluded, top_n=top_n)
         if section.signal is SignalType.DEPENDABOT:
             for table in org.dependabot_tables:
-                render_table_section(table, console, excluded=excluded, top_n=top_n)
+                render_table_section(
+                    table,
+                    console,
+                    excluded=excluded,
+                    top_n=top_n,
+                    show_notes=show_notes,
+                )
     if org.releases is not None:
-        render_table_section(org.releases, console, excluded=excluded, top_n=top_n)
+        render_table_section(
+            org.releases,
+            console,
+            excluded=excluded,
+            top_n=top_n,
+            show_notes=show_notes,
+        )
     if org.mutable_releases is not None:
         render_table_section(
-            org.mutable_releases, console, excluded=excluded, top_n=top_n
+            org.mutable_releases,
+            console,
+            excluded=excluded,
+            top_n=top_n,
+            show_notes=show_notes,
         )
     if org.private_vulnerability_reporting is not None:
         render_table_section(
@@ -225,11 +253,16 @@ def render_org(org: OrgReport, console: Console, *, top_n: int | None = None) ->
             console,
             excluded=excluded,
             top_n=top_n,
+            show_notes=show_notes,
         )
 
 
 def render_orgs(
-    orgs: list[OrgReport], console: Console, *, top_n: int | None = None
+    orgs: list[OrgReport],
+    console: Console,
+    *,
+    top_n: int | None = None,
+    show_notes: bool = True,
 ) -> None:
     for org in orgs:
-        render_org(org, console, top_n=top_n)
+        render_org(org, console, top_n=top_n, show_notes=show_notes)

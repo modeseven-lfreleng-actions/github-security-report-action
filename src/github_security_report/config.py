@@ -87,6 +87,9 @@ CONFIG_SCHEMA: dict = {
                 # Opt-in: report repositories where GitHub's "private
                 # vulnerability reporting" feature is not enabled (default off).
                 "private_vulnerability_reporting": {"type": "boolean"},
+                # Terminal/CLI only: when false, the explanatory footnote lines
+                # beneath each section are omitted (default true keeps them).
+                "cli_notes": {"type": "boolean"},
                 "ruleset_workflows": {
                     "type": "object",
                     "additionalProperties": {"type": "string"},
@@ -175,6 +178,12 @@ class ReportConfig:
     # feature is not enabled. Off by default because it costs one extra per-repo
     # REST probe (GitHub exposes no org-wide or GraphQL equivalent).
     private_vulnerability_reporting: bool = False
+    # Terminal/CLI only: when False, the explanatory footnote lines rendered
+    # beneath each section (scope/ranking guidance) are suppressed, leaving just
+    # the tables and the ✅/❌ status footer. Defaults True so the guidance is
+    # shown unless a config explicitly opts out for a terser local view. Does
+    # not affect the Markdown/HTML/Slack outputs.
+    cli_notes: bool = True
     # Read-only mapping (frozen dataclasses do not deep-freeze a plain dict, so a
     # MappingProxyType prevents in-place mutation of a shared config).
     ruleset_workflows: Mapping[str, str] = field(
@@ -277,6 +286,7 @@ def _report_from(data: dict, base: ReportConfig) -> ReportConfig:
                 "repo_min_age_days",
                 "release_max_age_days",
                 "private_vulnerability_reporting",
+                "cli_notes",
             }
         },
     )
