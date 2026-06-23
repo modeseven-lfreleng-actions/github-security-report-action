@@ -84,6 +84,9 @@ CONFIG_SCHEMA: dict = {
                 # Releases/Tagging only when its newest release or tag is older
                 # than this many days (0 = flag every eligible repository).
                 "release_max_age_days": {"type": "integer", "minimum": 0},
+                # Opt-in: report repositories where GitHub's "private
+                # vulnerability reporting" feature is not enabled (default off).
+                "private_vulnerability_reporting": {"type": "boolean"},
                 "ruleset_workflows": {
                     "type": "object",
                     "additionalProperties": {"type": "string"},
@@ -167,6 +170,11 @@ class ReportConfig:
     # neither a release nor a tag is always flagged. 0 disables the threshold,
     # so every eligible repository is listed (ranked by staleness).
     release_max_age_days: int = 0
+    # Opt-in Private Vulnerability Reporting section. When True, the report adds
+    # a table of repositories where GitHub's private vulnerability reporting
+    # feature is not enabled. Off by default because it costs one extra per-repo
+    # REST probe (GitHub exposes no org-wide or GraphQL equivalent).
+    private_vulnerability_reporting: bool = False
     # Read-only mapping (frozen dataclasses do not deep-freeze a plain dict, so a
     # MappingProxyType prevents in-place mutation of a shared config).
     ruleset_workflows: Mapping[str, str] = field(
@@ -268,6 +276,7 @@ def _report_from(data: dict, base: ReportConfig) -> ReportConfig:
                 "include_test",
                 "repo_min_age_days",
                 "release_max_age_days",
+                "private_vulnerability_reporting",
             }
         },
     )

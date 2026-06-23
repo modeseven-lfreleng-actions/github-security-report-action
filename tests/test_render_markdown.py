@@ -246,6 +246,19 @@ class TestExtraTables:
         assert "| [img](https://github.com/o/img) | v0.1.0 (latest) |" in out
         assert "_Recent releases in the repositories above are not immutable._" in out
 
+    def test_org_renders_private_vulnerability_reporting(self) -> None:
+        org = _org([], count=2)
+        org.private_vulnerability_reporting = report.TableSection(
+            title="Private Vulnerability Reporting",
+            columns=("Repositories NOT Enabled",),
+            rows=[report.TableRow(repo=_repo("z"), cells=())],
+            summary="1 not enabled, 1 enabled",
+        )
+        out = markdown.render_org(org)
+        assert "## Private Vulnerability Reporting\n" in out
+        assert "| [z](https://github.com/o/z) |" in out
+        assert "\n1 not enabled, 1 enabled\n" in out
+
     def test_org_shows_excluded_repos(self) -> None:
         org = _org([], count=2)
         org.excluded_repos = [_repo("opted-out")]

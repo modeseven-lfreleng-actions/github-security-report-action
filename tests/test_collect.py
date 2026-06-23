@@ -101,6 +101,9 @@ class FakeClient:
     async def automated_security_fixes(self, org: str, repo: str) -> bool | None:
         return True
 
+    async def private_vulnerability_reporting(self, org: str, repo: str) -> bool | None:
+        return True
+
     async def dependabot_config(self, org: str, repo: str) -> tuple[int, str]:
         return 404, ""  # no Dependabot configuration by default
 
@@ -404,6 +407,39 @@ async def test_collect_org_attaches_dependabot_tables_and_releases() -> None:
     assert report.mutable_releases is not None
     assert report.mutable_releases.title == "Mutable Releases"
     assert report.mutable_releases.rows == []
+
+    # Private Vulnerability Reporting is opt-in; with the default config the
+    # section is not built and the per-repo flag is never probed.
+    assert report.private_vulnerability_reporting is None
+
+
+async def test_collect_org_private_vulnerability_reporting_opt_in() -> None:
+    # With the opt-in enabled, the report gains a Private Vulnerability
+    # Reporting table listing only the repositories with the feature disabled.
+    class PvrPostureClient(PostureClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self._pvr = {"dependamerge": True, "git-configure-action": False}
+
+        async def private_vulnerability_reporting(
+            self, org: str, repo: str
+        ) -> bool | None:
+            return self._pvr.get(repo, True)
+
+    report = await collect.collect_org(
+        PvrPostureClient(),
+        OrgConfig(
+            name="o",
+            report=ReportConfig(private_vulnerability_reporting=True),
+        ),
+        ReportConfig(private_vulnerability_reporting=True),
+        generated_at=WHEN,
+    )
+    pvr = report.private_vulnerability_reporting
+    assert pvr is not None
+    assert pvr.title == "Private Vulnerability Reporting"
+    assert [r.repo.name for r in pvr.rows] == ["git-configure-action"]
+    assert pvr.summary == "1 not enabled, 1 enabled"
 
 
 async def test_collect_org_releases_exclude_and_min_age() -> None:

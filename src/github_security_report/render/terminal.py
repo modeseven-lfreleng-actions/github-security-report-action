@@ -157,6 +157,10 @@ def render_org(org: OrgReport, console: Console, *, top_n: int | None = None) ->
         render_table_section(org.releases, console, top_n=top_n)
     if org.mutable_releases is not None:
         render_table_section(org.mutable_releases, console, top_n=top_n)
+    if org.private_vulnerability_reporting is not None:
+        render_table_section(
+            org.private_vulnerability_reporting, console, top_n=top_n
+        )
 
 
 def render_orgs(

@@ -72,6 +72,12 @@ class ClientProtocol(Protocol):
         """Whether Dependabot automated security fixes are enabled."""
         raise NotImplementedError
 
+    async def private_vulnerability_reporting(
+        self, org: str, repo: str
+    ) -> bool | None:
+        """Whether private vulnerability reporting is enabled for a repository."""
+        raise NotImplementedError
+
     async def repo_graph_batch(
         self, org: str, names: list[str]
     ) -> dict[str, RepoGraphData]:
@@ -195,15 +201,25 @@ async def _posture_for_repo(
     *,
     dependabot_alerts: bool | None,
     graph: RepoGraphData,
+    collect_pvr: bool = False,
 ) -> RepoPosture:
     """Build one repo's Dependabot posture and release/tag freshness.
 
     ``dependabot_alerts`` and the release/tag/``dependabot.yml`` data come from
-    the batched GraphQL prefetch (:func:`_collect_graph`); only the
-    security-updates flag remains a per-repo REST call, since GitHub exposes no
-    GraphQL equivalent.
+    the batched GraphQL prefetch (:func:`_collect_graph`); the security-updates
+    flag remains a per-repo REST call, since GitHub exposes no GraphQL
+    equivalent. When ``collect_pvr`` is set, the (opt-in) private-vulnerability-
+    reporting flag is probed in the same gather; otherwise it stays ``None`` and
+    no request is made, so disabled orgs pay nothing.
     """
-    security_updates = await client.automated_security_fixes(org, repo.name)
+    if collect_pvr:
+        security_updates, pvr = await asyncio.gather(
+            client.automated_security_fixes(org, repo.name),
+            client.private_vulnerability_reporting(org, repo.name),
+        )
+    else:
+        security_updates = await client.automated_security_fixes(org, repo.name)
+        pvr = None
     config_text = graph.dependabot_config
     has_config = config_text is not None
     cooldown_missing = (
@@ -215,6 +231,7 @@ async def _posture_for_repo(
         repo=repo,
         dependabot_alerts=dependabot_alerts,
         security_updates=security_updates,
+        private_vulnerability_reporting=pvr,
         cooldown_missing=cooldown_missing,
         has_dependabot_config=has_config,
         latest_release_at=graph.latest_release_at,
@@ -357,6 +374,7 @@ async def collect_org(
                         client, org, repo,
                         dependabot_alerts=dependabot_on.get(repo.name),
                         graph=graph.get(repo.name, RepoGraphData()),
+                        collect_pvr=report_cfg.private_vulnerability_reporting,
                     )
                     for repo in batch
                 )
@@ -372,6 +390,10 @@ async def collect_org(
         exclude=org_cfg.releases_exclude,
     )
     report.mutable_releases = posture.build_mutable_releases_table(postures)
+    # Opt-in: the Private Vulnerability Reporting table is only built (and its
+    # per-repo flag only probed) when the org config enables it.
+    if report_cfg.private_vulnerability_reporting:
+        report.private_vulnerability_reporting = posture.build_pvr_table(postures)
     # The Dependabot alerts enablement sub-table carries the repositories with
     # Dependabot alerts disabled, so drop them from the Dependabot signal
     # section's nag list to avoid listing the same repositories twice under the

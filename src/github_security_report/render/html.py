@@ -135,6 +135,11 @@ def render_org_html(org: OrgReport, *, top_n: int | None = None) -> str:
                 if org.mutable_releases
                 else None
             ),
+            private_vulnerability_reporting=(
+                _table_context(org.private_vulnerability_reporting, top_n)
+                if org.private_vulnerability_reporting
+                else None
+            ),
             datatables_version=DATATABLES_VERSION,
             datatables_css_sri=DATATABLES_CSS_SRI,
             datatables_js_sri=DATATABLES_JS_SRI,

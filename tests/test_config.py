@@ -143,6 +143,22 @@ class TestBuildConfig:
         org = config.build_config(data).organizations[0]
         assert org.report.release_max_age_days == 90
 
+    def test_private_vulnerability_reporting_default_off_and_override(self) -> None:
+        # Off by default; an org-level opt-in overrides the global default.
+        assert (
+            config.build_config(MINIMAL).report.private_vulnerability_reporting is False
+        )
+        data = {
+            "organizations": [
+                {
+                    "name": "o",
+                    "report": {"private_vulnerability_reporting": True},
+                },
+            ],
+        }
+        org = config.build_config(data).organizations[0]
+        assert org.report.private_vulnerability_reporting is True
+
     def test_releases_exclude_parsed(self) -> None:
         data = {
             "organizations": [

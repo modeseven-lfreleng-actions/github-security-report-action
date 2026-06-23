@@ -50,6 +50,14 @@ tables (org mode):
   repositories whose newest release or tag is older than that many days
   (default `0` = flag every eligible repository).
 
+One **opt-in** section is off by default:
+
+- **Private Vulnerability Reporting** — repositories where GitHub's private
+  vulnerability reporting feature is **not enabled**. Enable it with
+  `report.private_vulnerability_reporting: true`. It is off by default because
+  it costs one extra per-repository REST probe (GitHub exposes no org-wide or
+  GraphQL equivalent); the probe needs only `Metadata: read`.
+
 ## Operating modes
 
 | Mode | Token | Scope | Output |
@@ -178,7 +186,8 @@ environment-variable name, never embedded.
     "include_archived": false,
     "include_test": false,
     "repo_min_age_days": 28,
-    "release_max_age_days": 0
+    "release_max_age_days": 0,
+    "private_vulnerability_reporting": false
   },
   "organizations": [
     {
@@ -212,6 +221,10 @@ The Releases / Tagging section has two independent freshness levers:
   release **or** tag is older than that many days (a repository with neither is
   always flagged). Raise it to match your release cadence so actively released
   repositories drop out of the table. CLI: `--release-max-age-days`.
+- `report.private_vulnerability_reporting` (default `false`) opts in to the
+  **Private Vulnerability Reporting** section, which lists repositories where
+  the feature is not enabled. It is off by default because it adds one
+  per-repository REST probe (no org-wide or GraphQL equivalent exists).
 
 The per-org `releases_exclude` (CLI `--releases-exclude`, repeatable) drops
 named repositories from the section entirely.

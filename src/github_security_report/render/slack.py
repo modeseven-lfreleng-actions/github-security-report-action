@@ -210,6 +210,10 @@ def render_org_blocks(org: OrgReport, *, top_n: int, pages_url: str | None) -> l
         block = _table_block(org.mutable_releases, top_n)
         if block is not None:
             blocks.append(block)
+    if org.private_vulnerability_reporting is not None:
+        block = _table_block(org.private_vulnerability_reporting, top_n)
+        if block is not None:
+            blocks.append(block)
     if pages_url:
         blocks.append(
             {

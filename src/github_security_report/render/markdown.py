@@ -199,6 +199,12 @@ def render_org(org: OrgReport, *, top_n: int | None = None) -> str:
         parts.append(render_table_section(org.releases, level=2, top_n=top_n))
     if org.mutable_releases is not None:
         parts.append(render_table_section(org.mutable_releases, level=2, top_n=top_n))
+    if org.private_vulnerability_reporting is not None:
+        parts.append(
+            render_table_section(
+                org.private_vulnerability_reporting, level=2, top_n=top_n
+            )
+        )
     return "\n".join(parts).rstrip() + "\n"
 
 
