@@ -88,12 +88,14 @@ def test_dependabot_tables_and_releases_rendered() -> None:
             title="Enablement",
             columns=("Repository", "Dependabot alerts"),
             rows=[report.TableRow(repo=_repo("off"), cells=("❌ not enabled",))],
+            flagged_noun="Disabled",
         )
     ]
     org.releases = report.TableSection(
         title="Releases / Tagging",
         columns=("Repository", "Last release", "Last tag"),
         rows=[report.TableRow(repo=_repo("stale"), cells=("never", "never"))],
+        flagged_noun="Stale",
     )
     out = _render(org)
     assert "Enablement" in out
@@ -102,21 +104,50 @@ def test_dependabot_tables_and_releases_rendered() -> None:
     assert "stale" in out
 
 
-def test_mutable_releases_rendered_with_summary() -> None:
+def test_mutable_releases_rendered_with_status_footer() -> None:
     org = _org([], count=84)
     org.mutable_releases = report.TableSection(
         title="Mutable Releases",
         columns=("Repository", "Releases"),
         rows=[report.TableRow(repo=_repo("img"), cells=("v0.1.0 (latest)",))],
         note="Recent releases in the repositories above are not immutable.",
-        summary="2 with findings, 82 clean",
+        summary="1 with findings, 82 clean",  # kept for the non-terminal renderers
+        clean_count=82,
+        flagged_noun="Mutable",
     )
     out = _render(org)
-    # The heading is bare; the summary is relocated beneath the table.
+    # The data table is kept (it carries the release tag), but the freeform
+    # summary line is replaced by the uniform ✅/❌ status footer.
     assert "Mutable Releases" in out
-    assert "Mutable Releases — 2 with findings" not in out
-    assert "2 with findings, 82 clean" in out
     assert "img" in out
+    assert "✅ 82 Clean" in out
+    assert "❌ 1 Mutable" in out
+    assert "1 with findings, 82 clean" not in out
+
+
+def test_name_list_feature_drops_table_for_status_footer() -> None:
+    # A single-column section (e.g. Private Vulnerability Reporting) carries no
+    # per-repo data, so its table is dropped in favour of the signal-style
+    # "<noun>:" breakdown plus the shared count footer.
+    org = _org([], count=85)
+    org.excluded_repos = [_repo("opted-out")]
+    org.private_vulnerability_reporting = report.TableSection(
+        title="Private Vulnerability Reporting",
+        columns=("Repositories NOT Enabled",),
+        rows=[report.TableRow(repo=_repo("exposed"), cells=())],
+        note="Private vulnerability reporting is disabled on these repositories.",
+        clean_count=79,
+        flagged_noun="Disabled",
+    )
+    out = _render(org)
+    section = out.split("Private Vulnerability Reporting", 1)[1]
+    assert "✅ 79 Clean" in section
+    assert "❌ 1 Disabled" in section
+    assert "Disabled: exposed" in section
+    assert "⏩ 1 Excluded" in section
+    assert "Excluded: opted-out" in section
+    # No Rich table border is drawn for a pure name list.
+    assert "┃" not in section
 
 
 def test_excluded_repos_shown_under_each_section_with_count() -> None:

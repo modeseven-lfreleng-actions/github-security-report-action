@@ -207,6 +207,9 @@ def _build_feature_table(
         ),
         note=note,
         summary=_posture_summary(not_enabled, "not enabled", enabled, "enabled"),
+        clean_count=enabled,
+        unknown_count=indeterminate,
+        flagged_noun="Disabled",
     )
 
 
@@ -264,6 +267,8 @@ def build_cooldown_table(postures: list[RepoPosture]) -> TableSection:
         summary=_posture_summary(
             missing, "without cooldown", with_cooldown, "with cooldown"
         ),
+        clean_count=with_cooldown,
+        flagged_noun="Without cooldown",
     )
 
 
@@ -327,6 +332,7 @@ def build_releases_table(
     """
     excluded = frozenset(exclude)
     ranked: list[tuple[int, int, RepoPosture, int | None, int | None]] = []
+    current = 0
     for posture in postures:
         repo = posture.repo
         if is_release_excluded(
@@ -339,6 +345,9 @@ def build_releases_table(
         release_age = _age_days(posture.latest_release_at, generated_at)
         tag_age = _age_days(posture.latest_tag_at, generated_at)
         if _release_is_current(release_age, tag_age, release_max_age_days):
+            # Eligible, but its newest release/tag is recent enough to omit; it
+            # is the "clean" counterpart to the stale repositories listed below.
+            current += 1
             continue
         # Rank purely by release/tag staleness -- repository age only gates
         # scope, never ordering. A missing release or tag is the worst possible
@@ -384,6 +393,8 @@ def build_releases_table(
             + "Ranked by combined release and tag staleness (oldest first). "
             "A repository with neither a release nor a tag ranks highest."
         ),
+        clean_count=current,
+        flagged_noun="Stale",
     )
 
 
@@ -454,6 +465,9 @@ def build_mutable_releases_table(postures: list[RepoPosture]) -> TableSection:
         summary=_posture_summary(
             finding_count, "with findings", clean_count, "clean"
         ),
+        clean_count=clean_count,
+        unknown_count=indeterminate_count,
+        flagged_noun="Mutable",
     )
 
 

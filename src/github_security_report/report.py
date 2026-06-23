@@ -85,8 +85,19 @@ class TableSection:
     note: str = ""
     # Optional one-line count summary rendered beneath the table (after any
     # note), e.g. "2 with findings, 82 clean". Empty for tables that show no
-    # summary.
+    # summary. Consumed by the Markdown/HTML/Slack renderers; the terminal uses
+    # the structured counts below instead (see :mod:`render.terminal`).
     summary: str = ""
+    # Structured counts for the terminal's uniform status footer
+    # (✅ Clean / ❌ <noun> / ⏩ Excluded / ❓ Unknown). The flagged count is
+    # always ``len(rows)``; ``flagged_noun`` is the per-feature word for the
+    # ❌ line (e.g. "Disabled", "Stale", "Mutable", "Without cooldown"), kept
+    # distinct so staleness is never mislabelled as "Disabled". ``clean_count``
+    # and ``unknown_count`` feed the ✅/❓ lines; both default to zero so a
+    # section that has no such axis simply omits those lines.
+    clean_count: int = 0
+    unknown_count: int = 0
+    flagged_noun: str = ""
 
 
 @dataclass

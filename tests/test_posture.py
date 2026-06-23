@@ -87,6 +87,12 @@ def test_alerts_table_lists_disabled_sorted() -> None:
     # The indeterminate (None) repo counts towards neither side of the summary.
     assert table.summary == "2 not enabled, 1 enabled"
     assert table.note
+    # Structured counts feed the terminal's uniform status footer.
+    assert (table.clean_count, table.unknown_count, table.flagged_noun) == (
+        1,
+        1,
+        "Disabled",
+    )
 
 
 def test_alerts_table_empty_has_note_only() -> None:
@@ -213,6 +219,7 @@ def test_cooldown_table_lists_repos_missing_cooldown() -> None:
     assert [r.repo.name for r in table.rows] == ["a"]
     assert table.rows[0].cells == ("pip, npm",)
     assert table.summary == "1 without cooldown, 1 with cooldown"
+    assert (table.clean_count, table.flagged_noun) == (1, "Without cooldown")
 
 
 def test_cooldown_table_all_with_cooldown_summary() -> None:
@@ -407,6 +414,8 @@ def test_releases_table_release_max_age_omits_current_repos() -> None:
     )
     assert sorted(r.repo.name for r in table.rows) == ["never", "stale"]
     assert "older than 60 day(s)" in table.note
+    # The current (omitted) repo is the "clean" counterpart in the status footer.
+    assert (table.clean_count, table.flagged_noun) == (1, "Stale")
 
 
 def test_releases_table_release_max_age_boundary_is_inclusive() -> None:
