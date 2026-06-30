@@ -62,6 +62,15 @@ class SignalSection:
         """
         meta = self.signal.meta
         return [
+            # Offenders are enumerated as table rows, not a footer line, so this
+            # bucket is counted but not rendered: it exists solely to stop a
+            # partially-clean section collapsing its pass line to "All <pass>".
+            SummaryCount(
+                "fail",
+                len(self.offenders),
+                meta.fail_label or "With findings",
+                render=False,
+            ),
             SummaryCount(
                 "disabled",
                 len(self.nag_repos),
@@ -85,13 +94,19 @@ class SummaryCount:
 
     ``kind`` selects the glyph, colour and ordering; ``names`` carries the
     repository names listed beneath the count line (used for the disabled and
-    excluded kinds, where naming the repositories is actionable).
+    excluded kinds, where naming the repositories is actionable). ``render``
+    false keeps the bucket out of the visible footer while still letting it
+    count towards the "nothing needs attention" test that collapses the pass
+    line to ``All <pass>``: a severity signal's offenders live in the table
+    (not as a footer line), but they must still suppress a falsely reassuring
+    ``All <pass>`` when the section is only partially clean.
     """
 
     kind: str  # "fail" | "disabled" | "unknown" | "pass" | "excluded"
     count: int
     label: str
     names: tuple[str, ...] = ()
+    render: bool = True
 
 
 @dataclass(frozen=True)
@@ -130,12 +145,15 @@ def build_summary(counts: Sequence[SummaryCount]) -> list[SummaryLine]:
     everywhere. The pass line reads ``All <pass_label>`` -- with no number --
     only when nothing else needs attention (no failures, not-enabled, unknown
     or excluded repositories); otherwise every present bucket shows its count.
-    Zero-valued buckets are dropped.
+    Zero-valued buckets are dropped, as are buckets flagged ``render=False``
+    (which still count towards the collapse test but emit no visible line).
     """
     present = [c for c in counts if c.count > 0]
     non_pass = sum(c.count for c in present if c.kind != "pass")
     lines: list[SummaryLine] = []
     for count in sorted(present, key=lambda c: _SUMMARY_ORDER[c.kind]):
+        if not count.render:
+            continue
         if count.kind == "pass" and non_pass == 0:
             text = f"All {count.label}"
         else:
@@ -275,6 +293,11 @@ def offender_column_totals(offenders: Sequence[RepoSignal]) -> SeverityCounts:
         totals.high += sig.counts.high
         totals.medium += sig.counts.medium
         totals.low += sig.counts.low
+        # Informational has no visible column, but it is part of each row's
+        # ``Total`` cell, so the totals row must accumulate it too -- otherwise
+        # the ``Total`` column would not sum vertically whenever an offender
+        # carries informational findings (e.g. zizmor note-level results).
+        totals.informational += sig.counts.informational
     return totals
 
 

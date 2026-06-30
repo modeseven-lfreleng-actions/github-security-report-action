@@ -182,6 +182,11 @@ def render_table_section(
     heading = "#" * level
     meta = section.category
     lines = [f"{heading} {meta.title}", ""]
+    summary = build_summary(section.summary_counts(excluded))
+    if not (section.rows or summary):
+        lines.append("_No data available._")
+        lines.append("")
+        return "\n".join(lines).rstrip() + "\n"
     rows, hidden = truncate(section.rows, top_n)
     if rows:
         aligns = ["---"] * len(section.columns)
@@ -198,7 +203,7 @@ def render_table_section(
     name_to_repo = {r.name: r for r in excluded}
     lines.extend(
         _summary_lines(
-            build_summary(section.summary_counts(excluded)),
+            summary,
             name_to_repo,
             top_n=top_n,
         )
@@ -228,16 +233,23 @@ def render_org(
         parts.append("")
     excluded = org.excluded_repos
     for section in org.sections:
-        if visible(section.signal.category_key):
+        parent_visible = visible(section.signal.category_key)
+        if parent_visible:
             parts.append(
                 render_section(section, excluded=excluded, top_n=top_n)
             )
-        # The Dependabot configuration-posture sub-tables nest beneath the
-        # Dependabot signal heading.
+        # The Dependabot configuration-posture sub-tables normally nest beneath
+        # the Dependabot signal heading as level-3 sub-sections. When the parent
+        # signal is hidden they would otherwise become orphaned ### headings
+        # under the previous ## section, so promote them to level 2 -- keeping
+        # the heading structure correct and consistent with the HTML surface,
+        # which likewise promotes them to top-level sections when the parent is
+        # hidden.
         if section.signal is SignalType.DEPENDABOT:
+            table_level = 3 if parent_visible else 2
             parts.extend(
                 render_table_section(
-                    table, level=3, excluded=excluded, top_n=top_n
+                    table, level=table_level, excluded=excluded, top_n=top_n
                 )
                 for table in org.dependabot_tables
                 if visible(table.category.key)

@@ -109,6 +109,42 @@ class TestOrgHtml:
         assert "Ranked by combined staleness." in out
         assert 'class="desc"' in out
 
+    def test_dependabot_posture_tables_when_parent_hidden(self) -> None:
+        # Hiding the parent Dependabot Alerts signal must not drop the
+        # independently-toggled posture sub-tables on the HTML surface; an
+        # enabled posture table surfaces as its own top-level section instead
+        # (matching the terminal/Markdown/Slack renderers, which decouple the
+        # posture tables from the parent signal's visibility).
+        signals = [
+            RepoSignal(
+                _repo("dep"),
+                SignalType.DEPENDABOT,
+                RepoState.OFFENDER,
+                SeverityCounts(high=1),
+            ),
+        ]
+        org = _org("o", signals, count=2)
+        org.dependabot_tables = [
+            report.TableSection(
+                category=category_meta(CategoryKey.DEPENDABOT_ALERTS_ENABLED),
+                columns=("Repository",),
+                rows=[report.TableRow(repo=_repo("off"), cells=())],
+                pass_count=5,
+                fail_count=1,
+            )
+        ]
+
+        def show(key: CategoryKey) -> bool:
+            return key is not CategoryKey.DEPENDABOT_ALERTS
+
+        out = html.render_org_html(org, show=show)
+        # The parent Dependabot Alerts signal is hidden...
+        assert "Dependabot: Security Alerts" not in out
+        # ...but the enabled posture table still renders, now promoted to a
+        # top-level section heading rather than nested as an <h3> sub-table.
+        assert "<h2>Dependabot: Alerts Enabled</h2>" in out
+        assert '<a href="https://github.com/o/off">off</a>' in out
+
     def test_renders_mutable_releases_with_summary(self) -> None:
         org = _org("o", [], count=84)
         org.mutable_releases = report.TableSection(
@@ -125,6 +161,19 @@ class TestOrgHtml:
         assert "kind-fail" in out and "kind-pass" in out
         assert '<a href="https://github.com/o/img">img</a>' in out
         assert "v0.1.0 (latest)" in out
+
+    def test_table_section_no_data_placeholder(self) -> None:
+        # No rows and every footer bucket zero must surface a "no data"
+        # placeholder, not a bare heading with nothing beneath it.
+        org = _org("o", [], count=0)
+        org.mutable_releases = report.TableSection(
+            category=category_meta(CategoryKey.MUTABLE_RELEASES),
+            columns=("Repository", "Releases"),
+            rows=[],
+        )
+        out = html.render_org_html(org)
+        assert "<h2>Mutable Releases</h2>" in out
+        assert "No data available." in out
 
     def test_renders_category_description_with_reference_link(self) -> None:
         # HTML shows the per-category description and links to the documentation
@@ -186,6 +235,37 @@ class TestOrgHtml:
         )
         out = html.render_org_html(_org("o", [sig]))
         assert "<tfoot>" not in out
+
+    def test_severity_cells_right_aligned_posture_cells_not(self) -> None:
+        # Severity-count columns are numeric and right-aligned (class="num");
+        # posture/freshness columns are textual and must stay left-aligned, so
+        # their cells carry no "num" class (a regression guard for the shared
+        # render_table macro, which previously forced num on every column).
+        signals = [
+            RepoSignal(
+                _repo("bad"),
+                SignalType.CODEQL,
+                RepoState.OFFENDER,
+                SeverityCounts(high=2),
+            ),
+        ]
+        org = _org("o", signals, count=2)
+        org.releases = report.TableSection(
+            category=category_meta(CategoryKey.RELEASES),
+            columns=("Repository", "Last release", "Last tag"),
+            rows=[
+                report.TableRow(
+                    repo=_repo("stale"), cells=("223 days ago", "223 days ago")
+                )
+            ],
+            fail_count=1,
+        )
+        out = html.render_org_html(org)
+        # Numeric severity cell is right-aligned.
+        assert '<td class="num">2</td>' in out
+        # Textual release cell is left-aligned (no num class).
+        assert '<td class="">223 days ago</td>' in out
+        assert '<td class="num">223 days ago</td>' not in out
 
 
 class TestIndexHtml:

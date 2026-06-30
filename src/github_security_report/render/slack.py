@@ -205,7 +205,12 @@ def render_org_blocks(
             summary = _summary_text(
                 build_summary(section.summary_counts(excluded)), top_n=top_n
             )
-            text += f"\n{summary}" if summary else "\nno data"
+            if summary:
+                text += f"\n{summary}"
+            elif not section.offenders:
+                # Only genuine absence of data (no rows and no countable state)
+                # warrants "no data"; an all-offender table has nothing to add.
+                text += "\nno data"
             blocks.append(
                 {"type": "section", "text": {"type": "mrkdwn", "text": text}}
             )

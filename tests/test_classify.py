@@ -221,6 +221,36 @@ class TestScorecardSources:
         )
         assert _by_signal(facts)[SignalType.SCORECARD].state is RepoState.UNKNOWN
 
+    def test_perfect_score_with_subthreshold_finding_is_clean(self) -> None:
+        # A perfect external score (10.0) carrying only a sub-threshold finding
+        # (low, below the default medium cutoff) folds into clean -- matching
+        # the cutoff logic the code-scanning fallback path uses, rather than
+        # branding the repo an offender on a count != 0.
+        facts = RepoFacts(
+            repo=_repo(),
+            code_scanning_status=200,
+            code_scanning_tools={"Scorecard"},
+            code_scanning_alerts=[_cs_alert("Scorecard", "low")],
+            scorecard_status=200,
+            scorecard_score=10.0,
+        )
+        sig = _by_signal(facts)[SignalType.SCORECARD]
+        assert sig.state is RepoState.CLEAN
+        assert sig.score == 10.0
+
+    def test_perfect_score_with_at_cutoff_finding_is_offender(self) -> None:
+        # A perfect score is not a free pass: a finding at or above the cutoff
+        # (medium by default) still makes the repo an offender.
+        facts = RepoFacts(
+            repo=_repo(),
+            code_scanning_status=200,
+            code_scanning_tools={"Scorecard"},
+            code_scanning_alerts=[_cs_alert("Scorecard", "medium")],
+            scorecard_status=200,
+            scorecard_score=10.0,
+        )
+        assert _by_signal(facts)[SignalType.SCORECARD].state is RepoState.OFFENDER
+
 
 class TestRulesetCoverage:
     def test_covered_with_no_findings_is_clean_not_nag(self) -> None:

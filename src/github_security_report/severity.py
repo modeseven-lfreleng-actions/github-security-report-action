@@ -12,8 +12,10 @@ in the code-scanning feed:
 
 To present a single, uniform set of severity columns across every table (as the
 design requires), the SARIF level is normalised onto the security scale when no
-security severity is present: error -> high, warning -> medium, note -> low.
-Dependabot's ``security_advisory.severity`` maps directly.
+security severity is present: error -> high, warning -> medium, and note/none ->
+informational (the sub-low rung, so a category's ``fail_severity`` cutoff can
+treat these advisory findings as non-actionable). Dependabot's
+``security_advisory.severity`` maps directly.
 """
 
 from __future__ import annotations

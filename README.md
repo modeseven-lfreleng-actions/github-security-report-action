@@ -267,6 +267,14 @@ flipping one output leaves the rest untouched). The machine-readable
 `report.json` artifact always contains the complete dataset, regardless of these
 toggles.
 
+When several organisations share one Slack channel they render into a single
+combined digest, so the per-org Slack toggles are unioned for that channel: a
+category appears if **any** contributing org would show it on Slack. An org-level
+Slack disable therefore does not suppress a category in a shared-channel digest
+unless every org sharing that channel also disables it (this mirrors the
+most-generous `top_n` rule applied to the same grouping). The terminal, Markdown
+and HTML surfaces are per-org and are not affected by this union.
+
 ### Pass/fail severity cutoff
 
 The severity-ranked signals (CodeQL, Scorecard, Zizmor, Dependabot alerts) use a

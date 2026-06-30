@@ -16,6 +16,7 @@ import datetime as dt
 import logging
 import socket
 from dataclasses import replace
+from email.utils import parsedate_to_datetime
 from typing import cast
 
 import httpx
@@ -55,6 +56,11 @@ API_BACKOFF_FACTOR = 2.0
 # transport failure then hard-fails (NetworkError) and a rate-limit gives up
 # and degrades. Bounds the worst-case wait one request can add to a run.
 API_MAX_TOTAL_WAIT_SECONDS = 60.0
+# Upper bound on the best-effort DNS lookup used only to enrich a network-error
+# message. Kept short so a slow or failing resolver cannot delay the abort: if
+# resolution does not complete within this window the address is reported as
+# ``ip=unresolved (timed out)``.
+API_DIAGNOSTIC_DNS_TIMEOUT_SECONDS = 2.0
 
 
 class NetworkError(RuntimeError):
@@ -70,12 +76,19 @@ class NetworkError(RuntimeError):
     """
 
 
-def _endpoint_diagnostics(url: str) -> str:
+async def _endpoint_diagnostics(url: str) -> str:
     """A ``host=... ip=... port=...`` line describing a failed endpoint.
 
     Best-effort and never raises: it re-resolves the URL's host so an operator
     can tell a DNS failure (no address) from a host that resolves but will not
     connect. Appended to the network-error message on its own dedicated line.
+
+    The lookup runs on the event loop's resolver under a short timeout
+    (``API_DIAGNOSTIC_DNS_TIMEOUT_SECONDS``) rather than calling the blocking
+    ``socket.getaddrinfo`` directly: this routine fires exactly when the network
+    is already failing (often DNS itself), so a synchronous resolve could stall
+    the event loop and delay the abort. If resolution does not complete promptly
+    the address falls back to ``unresolved (...)``.
     """
     try:
         parsed = httpx.URL(url)
@@ -83,10 +96,16 @@ def _endpoint_diagnostics(url: str) -> str:
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
     except Exception:  # pragma: no cover - defensive URL parsing
         return f"host=? ip=? port=? ({url})"
+    loop = asyncio.get_running_loop()
     try:
-        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        infos = await asyncio.wait_for(
+            loop.getaddrinfo(host, port, type=socket.SOCK_STREAM),
+            timeout=API_DIAGNOSTIC_DNS_TIMEOUT_SECONDS,
+        )
         ips = sorted({str(info[4][0]) for info in infos})
         addr = ", ".join(ips) if ips else "no addresses"
+    except asyncio.TimeoutError:
+        addr = "unresolved (timed out)"
     except OSError as exc:
         detail = exc.strerror or str(exc) or "resolution failed"
         addr = f"unresolved ({detail})"
@@ -150,6 +169,33 @@ def _parse_iso(value: object) -> dt.datetime | None:
         return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Seconds to wait from a ``Retry-After`` header, or ``None`` if absent/bad.
+
+    Per RFC 7231 ``Retry-After`` is either delta-seconds (an integer) or an
+    HTTP-date. GitHub normally sends delta-seconds, but a proxy or future change
+    may send a date, so both forms are parsed: a bare ``float(value)`` would
+    raise ``ValueError`` on a date and crash rate-limit handling. A past or
+    unparsable date clamps to ``0.0`` / returns ``None`` rather than raising.
+    """
+    if not value:
+        return None
+    value = value.strip()
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=dt.timezone.utc)
+    return max(0.0, (when - dt.datetime.now(dt.timezone.utc)).total_seconds())
 
 
 def _tag_committed_date(tags: dict | None) -> dt.datetime | None:
@@ -329,8 +375,9 @@ class GitHubClient:
         client). External calls pass the unauthenticated client so the GitHub
         token is never leaked to third parties.
 
-        Retries follow the module-level ``API_*`` policy: exponential backoff,
-        at most ``API_MAX_RETRIES`` retries, and at most
+        Retries follow the shared retry/backoff policy: exponential backoff,
+        at most ``max_retries`` retries (the constructor argument, defaulting to
+        ``API_MAX_RETRIES``), and at most
         ``API_MAX_TOTAL_WAIT_SECONDS`` of cumulative waiting. A transport
         failure (DNS/TLS/connect or read timeout) to the GitHub API that
         outlives the whole budget raises :class:`NetworkError` to abort the run
@@ -368,18 +415,19 @@ class GitHubClient:
                         return httpx.Response(
                             503, request=httpx.Request(method, url)
                         )
+                    diagnostics = await _endpoint_diagnostics(url)
                     raise NetworkError(
                         "Network error: the GitHub API is unreachable after "
                         f"{attempt + 1} attempt(s) within "
                         f"{API_MAX_TOTAL_WAIT_SECONDS:.0f}s; aborting because a "
                         "security report cannot be produced without live API "
                         "data.\n  "
-                        f"endpoint={method} {url} {_endpoint_diagnostics(url)} "
+                        f"endpoint={method} {url} {diagnostics} "
                         f"cause={exc!s}"
                     ) from exc
                 log.warning(
                     "request to %s failed: %s; retrying in %.0fs "
-                    "(attempt %d of %d)",
+                    "(retry %d of %d)",
                     url, exc, delay, attempt + 1, self._max_retries,
                 )
                 await asyncio.sleep(delay)
@@ -393,10 +441,23 @@ class GitHubClient:
             # schedule (honouring Retry-After) within the wait budget.
             retry_after = resp.headers.get("retry-after")
             remaining = resp.headers.get("x-ratelimit-remaining")
-            rate_limited = retry_after is not None or remaining == "0"
+            retry_after_secs = _parse_retry_after(retry_after)
+            # A 429 is by definition "Too Many Requests", so always back off on
+            # it even when GitHub (or an intermediary) omits Retry-After and the
+            # x-ratelimit-remaining header; falling through would return the 429
+            # un-retried. A 403 is a rate limit only when one of those headers
+            # says so (otherwise it is a genuine permission error); the mere
+            # *presence* of Retry-After counts, so a malformed/unparsable value
+            # still triggers a backoff (falling back to the exponential schedule
+            # below) rather than being mistaken for a permission error.
+            rate_limited = (
+                resp.status_code == 429
+                or retry_after is not None
+                or remaining == "0"
+            )
             delay = (
-                float(retry_after)
-                if retry_after
+                retry_after_secs
+                if retry_after_secs is not None
                 else self._backoff_delay(attempt)
             )
             if (

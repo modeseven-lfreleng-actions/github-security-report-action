@@ -171,10 +171,12 @@ def classify_scorecard(
     cutoff = _cutoff(SignalType.SCORECARD, fail_severities)
 
     if facts.scorecard_status == 200 and facts.scorecard_score is not None:
-        # A perfect 10 with no findings is clean; anything else is an offender.
-        # The score itself is the failure axis here, so an imperfect score is an
-        # offender regardless of finding severity.
-        clean = facts.scorecard_score >= 10.0 and counts.total == 0
+        # A perfect 10 with no at-or-above-cutoff findings is clean; anything
+        # else is an offender. The score itself is the failure axis here, so an
+        # imperfect score is an offender regardless of finding severity, but
+        # sub-threshold findings on a perfect score fold into clean -- matching
+        # the code-scanning cutoff logic used elsewhere in this file.
+        clean = facts.scorecard_score >= 10.0 and not counts.at_or_above(cutoff)
         state = RepoState.CLEAN if clean else RepoState.OFFENDER
         return RepoSignal(repo, SignalType.SCORECARD, state, counts=counts, score=facts.scorecard_score)
     if has_cs:
@@ -194,8 +196,11 @@ def classify_scorecard(
 
 
 def classify_secret_scanning(
-    facts: RepoFacts, fail_severities: FailSeverities | None = None
+    facts: RepoFacts, _fail_severities: FailSeverities | None = None
 ) -> RepoSignal:
+    # Secret scanning has no per-severity cutoff (a leaked secret is binary), so
+    # the cutoff argument is accepted only for signature uniformity with the
+    # other classifiers (they are dispatched positionally) and is unused here.
     repo = facts.repo
     if facts.secret_scanning_status == 403:
         return RepoSignal(repo, SignalType.SECRET_SCANNING, RepoState.UNKNOWN, detail="insufficient permission")

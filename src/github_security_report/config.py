@@ -25,6 +25,7 @@ from types import MappingProxyType
 import jsonschema
 
 from github_security_report.categories import CategoryKey, all_categories
+from github_security_report.models import SignalType
 from github_security_report.severity import Severity, from_name
 
 log = logging.getLogger(__name__)
@@ -447,6 +448,30 @@ def build_config(data: dict) -> Config:
         log.warning(
             "config key 'release_min_age_days' is deprecated; use "
             "'repo_min_age_days' (the repository-age grace period) instead"
+        )
+
+    # `fail_severity` only governs the severity-ranked signals (their classifier
+    # is the sole reader, via fail_severity_for); setting it on a binary
+    # category (enablement, cooldown, releases, mutability) silently does
+    # nothing. Warn so the dead override is not a quiet footgun.
+    signal_keys = {signal.category_key.value for signal in SignalType}
+    misplaced = sorted(
+        {
+            key
+            for block in report_blocks
+            for key, raw in block.get("categories", {}).items()
+            if isinstance(raw, dict)
+            and "fail_severity" in raw
+            and key not in signal_keys
+        }
+    )
+    if misplaced:
+        log.warning(
+            "config 'fail_severity' has no effect on the non-severity "
+            "categories %s; it applies only to the severity-ranked signals "
+            "(%s)",
+            ", ".join(misplaced),
+            ", ".join(sorted(signal_keys)),
         )
 
     global_slack = _slack_from(data.get("slack", {}), SlackConfig())

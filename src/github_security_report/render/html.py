@@ -121,6 +121,10 @@ def _table_context(
         "title": section.title,
         "url": section.category.url,
         "description": section.resolved_description(),
+        # Posture/freshness columns are textual (ecosystem lists, release/tag
+        # strings), so they are left-aligned rather than the right-aligned
+        # tabular-nums treatment used for the severity-count tables.
+        "numeric": False,
         "columns": list(section.columns),
         "rows": [
             {"name": row.repo.name, "url": row.repo.html_url, "cells": list(row.cells)}
@@ -155,6 +159,9 @@ def _section_context(
         "title": meta.title,
         "url": meta.url,
         "description": meta.description,
+        # Severity sections have numeric count columns after the leading
+        # repository column, so they are right-aligned with tabular figures.
+        "numeric": True,
         "columns": markdown.columns(section.signal),
         "rows": [
             {"name": s.repo.name, "url": s.repo.html_url, "cells": _row_cells(s)}
@@ -181,18 +188,31 @@ def render_org_html(
     excluded = org.excluded_repos
     sections: list[dict] = []
     for section in org.sections:
-        if not visible(section.signal.category_key):
-            continue
-        ctx = _section_context(section, excluded=excluded, top_n=top_n)
-        # The Dependabot posture sub-tables render beneath the Dependabot
-        # Alerts section, inside the same card.
-        if section.signal is SignalType.DEPENDABOT:
-            ctx["extra_tables"] = [
+        parent_visible = visible(section.signal.category_key)
+        if parent_visible:
+            ctx = _section_context(section, excluded=excluded, top_n=top_n)
+            # When the parent Dependabot Alerts signal is shown, its posture
+            # sub-tables render beneath it inside the same card.
+            if section.signal is SignalType.DEPENDABOT:
+                ctx["extra_tables"] = [
+                    _table_context(t, excluded=excluded, top_n=top_n)
+                    for t in org.dependabot_tables
+                    if visible(t.category.key)
+                ]
+            sections.append(ctx)
+        elif section.signal is SignalType.DEPENDABOT:
+            # The parent Dependabot Alerts signal is hidden, but the posture
+            # tables are toggled independently: surface any enabled ones as
+            # their own top-level sections so per-category toggles for
+            # dependabot_alerts_enabled / _updates_enabled / _cooldown are
+            # honoured on the HTML surface too -- matching the terminal,
+            # Markdown and Slack renderers, which decouple them from the
+            # parent signal's visibility.
+            sections.extend(
                 _table_context(t, excluded=excluded, top_n=top_n)
                 for t in org.dependabot_tables
                 if visible(t.category.key)
-            ]
-        sections.append(ctx)
+            )
     return str(
         template.render(
             org=org.org,

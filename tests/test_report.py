@@ -79,6 +79,45 @@ class TestBuildSummary:
         )
         assert [line.text for line in lines] == ["All Immutable"]
 
+    def test_non_render_bucket_suppresses_collapse_without_a_line(self) -> None:
+        # A render=False bucket (e.g. a severity signal's offenders, which live
+        # in the table rather than as a footer line) must still stop the pass
+        # line collapsing to "All <pass>", but must not emit its own line.
+        lines = report.build_summary(
+            [
+                report.SummaryCount("fail", 2, "With findings", render=False),
+                report.SummaryCount("pass", 84, "Clean"),
+            ]
+        )
+        assert [(line.kind, line.text) for line in lines] == [("pass", "84 Clean")]
+
+    def test_signal_section_with_offenders_does_not_claim_all_clean(self) -> None:
+        # A severity section that has offenders AND clean repos but no nag,
+        # unknown or excluded repositories must not collapse its pass line to a
+        # falsely reassuring "All Clean"; the offenders are in the table.
+        section = report.SignalSection(
+            signal=SignalType.CODEQL,
+            offenders=[
+                RepoSignal(
+                    _repo("bad"),
+                    SignalType.CODEQL,
+                    RepoState.OFFENDER,
+                    SeverityCounts(high=1),
+                )
+            ],
+            clean_count=85,
+        )
+        lines = report.build_summary(section.summary_counts())
+        # Only the pass line shows, and it keeps its number (no "All Clean").
+        assert [(line.kind, line.text) for line in lines] == [("pass", "85 Clean")]
+
+    def test_fully_clean_signal_section_collapses_to_all(self) -> None:
+        # With no offenders (and nothing else outstanding) the collapse to
+        # "All <pass>" still applies.
+        section = report.SignalSection(signal=SignalType.CODEQL, clean_count=86)
+        lines = report.build_summary(section.summary_counts())
+        assert [(line.kind, line.text) for line in lines] == [("pass", "All Clean")]
+
 
 class TestBuildOrgReport:
     def test_sections_in_fixed_order(self) -> None:
@@ -173,6 +212,34 @@ class TestBuildOrgReport:
         assert sections[SignalType.SCORECARD].offenders[0].score == 8.2
         assert sections[SignalType.CODEQL].clean_count == 1
         assert sections[SignalType.SECRET_SCANNING].clean_count == 1
+
+
+class TestOffenderColumnTotals:
+    def test_total_includes_informational(self) -> None:
+        # The Total column sums every severity rung, including the hidden
+        # informational one. The trailing totals row must therefore accumulate
+        # informational too, so the Total column sums vertically (each row's
+        # Total already counts informational via SeverityCounts.total).
+        offenders = [
+            RepoSignal(
+                _repo("a"),
+                SignalType.ZIZMOR,
+                RepoState.OFFENDER,
+                SeverityCounts(high=2, informational=3),
+            ),
+            RepoSignal(
+                _repo("b"),
+                SignalType.ZIZMOR,
+                RepoState.OFFENDER,
+                SeverityCounts(medium=1, informational=4),
+            ),
+        ]
+        totals = report.offender_column_totals(offenders)
+        assert totals.high == 2
+        assert totals.medium == 1
+        assert totals.informational == 7
+        # 2 high + 1 medium + 7 informational == sum of the per-row Totals (5+5).
+        assert totals.total == sum(o.counts.total for o in offenders) == 10
 
 
 class TestTruncate:

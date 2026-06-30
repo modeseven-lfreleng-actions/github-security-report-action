@@ -10,7 +10,8 @@ per-category headings, labels and explanatory text, so a wording change here
 flows to the terminal, Slack, Markdown and HTML surfaces at once.
 
 The registry deliberately holds no behaviour and imports nothing from the rest
-of the package, so both the domain models and the renderers can depend on it
+of the package except the leaf ``severity`` module (which itself imports nothing
+from the package), so both the domain models and the renderers can depend on it
 without a cycle. ``key`` values are the stable identifiers used by the
 per-category configuration toggles, so treat them as part of the config
 contract: rename with care.

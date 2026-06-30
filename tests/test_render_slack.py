@@ -68,6 +68,18 @@ def test_offenders_are_code_fenced() -> None:
     assert "repo " not in codeql["text"]["text"]
 
 
+def test_all_offender_section_has_no_no_data_line() -> None:
+    # Every repo is an offender, so the footer buckets (clean/nag/unknown/
+    # excluded) are all zero. The table itself is the data, so the block must
+    # not claim "no data" beneath it.
+    sig = RepoSignal(
+        _repo("bad"), SignalType.CODEQL, RepoState.OFFENDER, SeverityCounts(critical=1)
+    )
+    blocks = slack.render_org_blocks(_org([sig]), top_n=10, pages_url=None)
+    codeql = next(b for b in blocks if "CodeQL" in b.get("text", {}).get("text", ""))
+    assert "no data" not in codeql["text"]["text"]
+
+
 def test_top_n_limits_code_fence_rows() -> None:
     signals = [
         RepoSignal(

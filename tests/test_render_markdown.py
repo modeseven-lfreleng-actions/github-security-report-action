@@ -219,6 +219,17 @@ class TestExtraTables:
         out = markdown.render_table_section(empty, level=3)
         assert "✅ All Enabled" in out
 
+    def test_render_table_section_no_data_falls_back(self) -> None:
+        # No rows and every footer bucket zero: the section must say so rather
+        # than render only a bare heading.
+        empty = report.TableSection(
+            category=category_meta(CategoryKey.DEPENDABOT_ALERTS_ENABLED),
+            columns=("Repository",),
+            rows=[],
+        )
+        out = markdown.render_table_section(empty, level=3)
+        assert "_No data available._" in out
+
     def test_org_nests_dependabot_tables_and_releases(self) -> None:
         org = _org([], count=2)
         org.dependabot_tables = [self._table()]
@@ -236,6 +247,23 @@ class TestExtraTables:
         # Releases section rendered at the top level after all signals.
         assert "## Releases / Tagging" in out
         assert "| [z](https://github.com/o/z) | never | never |" in out
+
+    def test_posture_tables_promoted_to_level2_when_parent_hidden(self) -> None:
+        # When the parent Dependabot Alerts signal is hidden, its posture
+        # sub-tables must not be left as orphaned ### headings beneath the
+        # previous ## section; they are promoted to top-level ## sections,
+        # consistent with the HTML surface.
+        org = _org([], count=2)
+        org.dependabot_tables = [self._table()]
+
+        def show(key: CategoryKey) -> bool:
+            return key is not CategoryKey.DEPENDABOT_ALERTS
+
+        out = markdown.render_org(org, show=show)
+        # Parent signal hidden, posture table promoted to a level-2 heading.
+        assert "## Dependabot: Security Alerts" not in out
+        assert "## Dependabot: Cooldown Settings" in out
+        assert "### Dependabot: Cooldown Settings" not in out
 
     def test_org_renders_mutable_releases_with_summary(self) -> None:
         org = _org([], count=84)

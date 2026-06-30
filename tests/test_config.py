@@ -365,6 +365,34 @@ class TestCategoryToggles:
                 }
             )
 
+    def test_fail_severity_on_non_signal_category_warns(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # `fail_severity` only governs the severity-ranked signals; on a binary
+        # category (here releases) it is silently ignored, so the build warns
+        # rather than letting the dead override pass unnoticed.
+        data = {
+            "report": {"categories": {"releases": {"fail_severity": "low"}}},
+            "organizations": [{"name": "o"}],
+        }
+        with caplog.at_level("WARNING"):
+            config.build_config(data)
+        assert any(
+            "fail_severity" in r.message and "releases" in r.message
+            for r in caplog.records
+        )
+
+    def test_fail_severity_on_signal_category_does_not_warn(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        data = {
+            "report": {"categories": {"codeql": {"fail_severity": "low"}}},
+            "organizations": [{"name": "o"}],
+        }
+        with caplog.at_level("WARNING"):
+            config.build_config(data)
+        assert not any("fail_severity" in r.message for r in caplog.records)
+
 
 class TestLoads:
     def test_raw_json(self) -> None:
