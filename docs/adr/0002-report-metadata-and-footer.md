@@ -66,8 +66,9 @@ them to drift.
 - The `TableSection` model carries `CategoryMeta` plus normalised
   pass/fail/unknown counts instead of pre-rendered `note`/`summary`/`empty_note`
   strings; the old per-surface note-splitting helper is gone.
-- Category `key` values are part of the configuration contract (they name the
-  forthcoming per-category and per-output toggles), so they must be renamed with
+- Category `key` values are part of the configuration contract: they name the
+  per-category and per-output render toggles (`report.categories.<key>` with an
+  `enabled` switch and a per-surface `outputs` map), so they must be renamed with
   care.
 - The Dependabot enablement table is titled **"Dependabot: Alerts Enabled"** to
   disambiguate it from the **"Dependabot: Security Alerts"** open-alert signal it

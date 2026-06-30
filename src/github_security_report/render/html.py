@@ -12,10 +12,11 @@ alongside the standardised summary footer. See ``docs/BRIEF.md`` section 11.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
+from github_security_report.categories import CategoryKey
 from github_security_report.models import Repo, RepoSignal, SignalType
 from github_security_report.render import markdown
 from github_security_report.report import (
@@ -169,11 +170,19 @@ def _section_context(
     }
 
 
-def render_org_html(org: OrgReport, *, top_n: int | None = None) -> str:
+def render_org_html(
+    org: OrgReport,
+    *,
+    top_n: int | None = None,
+    show: Callable[[CategoryKey], bool] | None = None,
+) -> str:
+    visible = show or (lambda _key: True)
     template = _env.get_template("report.html.j2")
     excluded = org.excluded_repos
     sections: list[dict] = []
     for section in org.sections:
+        if not visible(section.signal.category_key):
+            continue
         ctx = _section_context(section, excluded=excluded, top_n=top_n)
         # The Dependabot posture sub-tables render beneath the Dependabot
         # Alerts section, inside the same card.
@@ -181,6 +190,7 @@ def render_org_html(org: OrgReport, *, top_n: int | None = None) -> str:
             ctx["extra_tables"] = [
                 _table_context(t, excluded=excluded, top_n=top_n)
                 for t in org.dependabot_tables
+                if visible(t.category.key)
             ]
         sections.append(ctx)
     return str(
@@ -192,12 +202,13 @@ def render_org_html(org: OrgReport, *, top_n: int | None = None) -> str:
             sections=sections,
             releases=(
                 _table_context(org.releases, excluded=excluded, top_n=top_n)
-                if org.releases
+                if org.releases and visible(org.releases.category.key)
                 else None
             ),
             mutable_releases=(
                 _table_context(org.mutable_releases, excluded=excluded, top_n=top_n)
                 if org.mutable_releases
+                and visible(org.mutable_releases.category.key)
                 else None
             ),
             datatables_version=DATATABLES_VERSION,

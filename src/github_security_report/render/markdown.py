@@ -12,8 +12,9 @@ sections 4-6, 11.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
+from github_security_report.categories import CategoryKey
 from github_security_report.models import Repo, RepoSignal, SignalType
 from github_security_report.report import (
     SUMMARY_EMOJI,
@@ -206,8 +207,12 @@ def render_table_section(
 
 
 def render_org(
-    org: OrgReport, *, top_n: int | None = None
+    org: OrgReport,
+    *,
+    top_n: int | None = None,
+    show: Callable[[CategoryKey], bool] | None = None,
 ) -> str:
+    visible = show or (lambda _key: True)
     when = org.generated_at.strftime("%Y-%m-%d %H:%M UTC")
     parts = [
         f"# Security report: {org.org}",
@@ -223,7 +228,10 @@ def render_org(
         parts.append("")
     excluded = org.excluded_repos
     for section in org.sections:
-        parts.append(render_section(section, excluded=excluded, top_n=top_n))
+        if visible(section.signal.category_key):
+            parts.append(
+                render_section(section, excluded=excluded, top_n=top_n)
+            )
         # The Dependabot configuration-posture sub-tables nest beneath the
         # Dependabot signal heading.
         if section.signal is SignalType.DEPENDABOT:
@@ -232,14 +240,17 @@ def render_org(
                     table, level=3, excluded=excluded, top_n=top_n
                 )
                 for table in org.dependabot_tables
+                if visible(table.category.key)
             )
-    if org.releases is not None:
+    if org.releases is not None and visible(org.releases.category.key):
         parts.append(
             render_table_section(
                 org.releases, level=2, excluded=excluded, top_n=top_n
             )
         )
-    if org.mutable_releases is not None:
+    if org.mutable_releases is not None and visible(
+        org.mutable_releases.category.key
+    ):
         parts.append(
             render_table_section(
                 org.mutable_releases, level=2, excluded=excluded, top_n=top_n

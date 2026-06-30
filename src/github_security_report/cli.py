@@ -17,7 +17,7 @@ import logging
 import os
 import re
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import NoReturn
@@ -26,8 +26,9 @@ import typer
 from rich.console import Console
 
 from github_security_report import __version__, collect, config, gitctx, runner
+from github_security_report.categories import CategoryKey
 from github_security_report.client import GitHubClient, NetworkError
-from github_security_report.config import Config, OrgConfig
+from github_security_report.config import Config, OrgConfig, ReportConfig
 from github_security_report.models import RepoSignal
 from github_security_report.render import html as html_render
 from github_security_report.render import markdown as md_render
@@ -148,18 +149,49 @@ def _safe_component(value: str) -> str:
     return safe or "channel"
 
 
+def _show(report_cfg: ReportConfig, output: str) -> Callable[[CategoryKey], bool]:
+    """A per-output category-visibility predicate for the render surfaces."""
+    return lambda key: report_cfg.shows_category(key, output)
+
+
+def _slack_show(
+    items: list[tuple[OrgConfig, OrgReport]],
+) -> Callable[[CategoryKey], bool]:
+    """Slack visibility for a channel: show a category if any org would.
+
+    Orgs sharing a Slack channel render into one digest, so a category appears
+    when any contributing org would show it on Slack -- mirroring the
+    most-generous ``top_n`` rule for the same grouping.
+    """
+    return lambda key: any(
+        oc.report.shows_category(key, "slack") for oc, _ in items
+    )
+
+
 def _write_org_files(
-    org: OrgReport, output_dir: Path, *, top_n: int | None = None
+    org: OrgReport,
+    output_dir: Path,
+    *,
+    top_n: int | None = None,
+    report_cfg: ReportConfig,
 ) -> None:
     slug = html_render.slugify(org.org)
     org_dir = output_dir / slug
     org_dir.mkdir(parents=True, exist_ok=True)
     (org_dir / "report.md").write_text(
-        md_render.render_org(org, top_n=top_n), encoding="utf-8"
+        md_render.render_org(
+            org, top_n=top_n, show=_show(report_cfg, "markdown")
+        ),
+        encoding="utf-8",
     )
     (org_dir / "report.html").write_text(
-        html_render.render_org_html(org, top_n=top_n), encoding="utf-8"
+        html_render.render_org_html(
+            org, top_n=top_n, show=_show(report_cfg, "html")
+        ),
+        encoding="utf-8",
     )
+    # report.json is the complete machine-readable dataset, so the per-output
+    # render toggles deliberately do not filter it.
     (org_dir / "report.json").write_text(
         json.dumps(_org_to_dict(org), indent=2) + "\n", encoding="utf-8"
     )
@@ -263,7 +295,10 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
 
     for org_cfg, org_report in pairs:
         term_render.render_org(
-            org_report, console, top_n=_limit(org_cfg, top_n_cli, "cli_top_n")
+            org_report,
+            console,
+            top_n=_limit(org_cfg, top_n_cli, "cli_top_n"),
+            show=_show(org_cfg.report, "cli"),
         )
 
     if output_dir:
@@ -272,6 +307,7 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
                 org_report,
                 output_dir,
                 top_n=_limit(org_cfg, top_n_report, "report_top_n"),
+                report_cfg=org_cfg.report,
             )
         (output_dir / "index.html").write_text(
             html_render.render_index_html(org_reports), encoding="utf-8"
@@ -315,6 +351,9 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
                 [_limit(oc, top_n_slack, "slack_top_n") for oc, _ in items]
             ),
             pages_url=pages_url,
+            # A category shows in the channel digest when any contributing org
+            # would show it on Slack (mirrors the most-generous top_n rule).
+            show=_slack_show(items),
         )
         for channel, items in by_channel.items()
     ]
@@ -332,7 +371,9 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
     summary = (
         "\n\n".join(
             md_render.render_org(
-                org_report, top_n=_limit(org_cfg, top_n_report, "report_top_n")
+                org_report,
+                top_n=_limit(org_cfg, top_n_report, "report_top_n"),
+                show=_show(org_cfg.report, "markdown"),
             )
             for org_cfg, org_report in pairs
         ).rstrip()

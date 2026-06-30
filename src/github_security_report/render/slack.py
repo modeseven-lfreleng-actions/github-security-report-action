@@ -12,8 +12,9 @@ Produces a ``chat.postMessage`` payload. See ``docs/BRIEF.md`` section 11.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
+from github_security_report.categories import CategoryKey
 from github_security_report.models import Repo, RepoSignal, SignalType
 from github_security_report.report import (
     SUMMARY_EMOJI,
@@ -166,8 +167,15 @@ def _table_block(
     }
 
 
-def render_org_blocks(org: OrgReport, *, top_n: int, pages_url: str | None) -> list[dict]:
+def render_org_blocks(
+    org: OrgReport,
+    *,
+    top_n: int,
+    pages_url: str | None,
+    show: Callable[[CategoryKey], bool] | None = None,
+) -> list[dict]:
     """Slack blocks for one organisation."""
+    visible = show or (lambda _key: True)
     blocks: list[dict] = [
         {
             "type": "header",
@@ -189,26 +197,33 @@ def render_org_blocks(org: OrgReport, *, top_n: int, pages_url: str | None) -> l
         )
     excluded = org.excluded_repos
     for section in org.sections:
-        text = f"*{section.signal.heading}*"
-        if section.offenders:
-            table = _fixed_table(section, top_n)
-            text += f"\n```\n{table}\n```"
-        summary = _summary_text(
-            build_summary(section.summary_counts(excluded)), top_n=top_n
-        )
-        text += f"\n{summary}" if summary else "\nno data"
-        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
+        if visible(section.signal.category_key):
+            text = f"*{section.signal.heading}*"
+            if section.offenders:
+                table = _fixed_table(section, top_n)
+                text += f"\n```\n{table}\n```"
+            summary = _summary_text(
+                build_summary(section.summary_counts(excluded)), top_n=top_n
+            )
+            text += f"\n{summary}" if summary else "\nno data"
+            blocks.append(
+                {"type": "section", "text": {"type": "mrkdwn", "text": text}}
+            )
         # Dependabot posture sub-tables follow the Dependabot signal block.
         if section.signal is SignalType.DEPENDABOT:
             for table_section in org.dependabot_tables:
+                if not visible(table_section.category.key):
+                    continue
                 block = _table_block(table_section, top_n, excluded=excluded)
                 if block is not None:
                     blocks.append(block)
-    if org.releases is not None:
+    if org.releases is not None and visible(org.releases.category.key):
         block = _table_block(org.releases, top_n, excluded=excluded)
         if block is not None:
             blocks.append(block)
-    if org.mutable_releases is not None:
+    if org.mutable_releases is not None and visible(
+        org.mutable_releases.category.key
+    ):
         block = _table_block(org.mutable_releases, top_n, excluded=excluded)
         if block is not None:
             blocks.append(block)
@@ -246,12 +261,21 @@ def _enforce_block_limit(blocks: list[dict], pages_url: str | None) -> list[dict
 
 
 def render_payload(
-    orgs: list[OrgReport], *, channel: str, top_n: int = 10, pages_url: str | None = None
+    orgs: list[OrgReport],
+    *,
+    channel: str,
+    top_n: int = 10,
+    pages_url: str | None = None,
+    show: Callable[[CategoryKey], bool] | None = None,
 ) -> dict:
     """Build a ``chat.postMessage`` payload across one or more organisations."""
     blocks: list[dict] = []
     for org in orgs:
-        blocks.extend(render_org_blocks(org, top_n=top_n, pages_url=pages_url))
+        blocks.extend(
+            render_org_blocks(
+                org, top_n=top_n, pages_url=pages_url, show=show
+            )
+        )
     blocks = _enforce_block_limit(blocks, pages_url)
     names = ", ".join(o.org for o in orgs)
     return {

@@ -245,3 +245,29 @@ def test_secret_scanning_has_no_totals_row() -> None:
     out = _render(_org(signals, count=1))
     secret_block = out.split(SignalType.SECRET_SCANNING.heading, 1)[1]
     assert "Total" not in secret_block
+
+
+def test_show_predicate_hides_disabled_categories() -> None:
+    # A category whose visibility predicate returns False is omitted entirely,
+    # including its heading -- the data is still present on the report object.
+    sig = RepoSignal(
+        _repo("bad"), SignalType.CODEQL, RepoState.OFFENDER, SeverityCounts(high=1)
+    )
+    org = _org([sig], count=1)
+    org.mutable_releases = report.TableSection(
+        category=category_meta(CategoryKey.MUTABLE_RELEASES),
+        columns=("Repository", "Releases"),
+        rows=[report.TableRow(repo=_repo("img"), cells=("v1 (latest)",))],
+        fail_count=1,
+    )
+    console = Console(record=True, width=120, no_color=True)
+    terminal.render_org(
+        org,
+        console,
+        show=lambda key: key not in {CategoryKey.CODEQL, CategoryKey.MUTABLE_RELEASES},
+    )
+    out = console.export_text()
+    assert "CodeQL" not in out
+    assert "Mutable Releases" not in out
+    # A category left enabled by the predicate still renders.
+    assert "Secret scanning" in out

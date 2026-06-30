@@ -302,6 +302,14 @@ Sketch:
   mode instead of erroring; the action never reads it (configuration is passed
   explicitly). Secrets stay out of the file — the token is referenced by
   `token_env`, and the Slack bot token is a workflow-only secret.
+- **Per-category render toggles:** `report.categories.<key>` switches a category
+  on or off without affecting data collection (collection is always
+  exhaustive). Each key carries a global `enabled` switch (highest precedence)
+  and a lower-precedence `outputs` map for the four surfaces (`cli`, `slack`,
+  `markdown`, `html`); a category renders on a surface only when `enabled` **and**
+  that surface's toggle are both true. Everything defaults to true. The keys are
+  the `categories` registry keys (§6); they merge per-org like the rest of the
+  `report` block. The `report.json` artifact is always complete regardless.
 
 ## 9. Credentials and operating modes
 

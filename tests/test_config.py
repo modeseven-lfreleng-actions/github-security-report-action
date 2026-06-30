@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from github_security_report import config
+from github_security_report.categories import CategoryKey
 from github_security_report.config import ConfigError
 
 TUESDAY = dt.date(2026, 6, 16)
@@ -239,6 +240,87 @@ class TestBuildConfig:
         with pytest.raises(ConfigError):
             config.build_config(
                 {"organizations": [{"name": "o"}], "report": {"top_n": -1}}
+            )
+
+
+class TestCategoryToggles:
+    def test_default_shows_every_category_on_every_output(self) -> None:
+        rc = config.build_config(MINIMAL).report
+        for output in config.REPORT_OUTPUTS:
+            assert rc.shows_category(CategoryKey.CODEQL, output)
+            assert rc.shows_category(CategoryKey.MUTABLE_RELEASES, output)
+
+    def test_global_enabled_false_hides_on_all_outputs(self) -> None:
+        data = {
+            "report": {"categories": {"zizmor": {"enabled": False}}},
+            "organizations": [{"name": "o"}],
+        }
+        rc = config.build_config(data).organizations[0].report
+        for output in config.REPORT_OUTPUTS:
+            assert not rc.shows_category(CategoryKey.ZIZMOR, output)
+        # Other categories are untouched.
+        assert rc.shows_category(CategoryKey.CODEQL, "cli")
+
+    def test_per_output_toggle_is_lower_precedence(self) -> None:
+        data = {
+            "report": {
+                "categories": {"releases": {"outputs": {"cli": False, "slack": False}}}
+            },
+            "organizations": [{"name": "o"}],
+        }
+        rc = config.build_config(data).organizations[0].report
+        assert not rc.shows_category(CategoryKey.RELEASES, "cli")
+        assert not rc.shows_category(CategoryKey.RELEASES, "slack")
+        # Outputs left unset stay enabled.
+        assert rc.shows_category(CategoryKey.RELEASES, "markdown")
+        assert rc.shows_category(CategoryKey.RELEASES, "html")
+
+    def test_global_enabled_overrides_per_output(self) -> None:
+        # enabled=false wins even when an output is explicitly true.
+        data = {
+            "report": {
+                "categories": {"codeql": {"enabled": False, "outputs": {"html": True}}}
+            },
+            "organizations": [{"name": "o"}],
+        }
+        rc = config.build_config(data).organizations[0].report
+        assert not rc.shows_category(CategoryKey.CODEQL, "html")
+
+    def test_org_override_merges_per_output(self) -> None:
+        # An org override that flips one output leaves the inherited enabled
+        # switch and the other outputs intact.
+        data = {
+            "report": {"categories": {"secret_scanning": {"outputs": {"cli": False}}}},
+            "organizations": [
+                {
+                    "name": "o",
+                    "report": {
+                        "categories": {"secret_scanning": {"outputs": {"slack": False}}}
+                    },
+                }
+            ],
+        }
+        rc = config.build_config(data).organizations[0].report
+        assert not rc.shows_category(CategoryKey.SECRET_SCANNING, "cli")
+        assert not rc.shows_category(CategoryKey.SECRET_SCANNING, "slack")
+        assert rc.shows_category(CategoryKey.SECRET_SCANNING, "markdown")
+
+    def test_rejects_unknown_category_key(self) -> None:
+        with pytest.raises(ConfigError):
+            config.build_config(
+                {
+                    "report": {"categories": {"bogus": {"enabled": False}}},
+                    "organizations": [{"name": "o"}],
+                }
+            )
+
+    def test_rejects_unknown_output_key(self) -> None:
+        with pytest.raises(ConfigError):
+            config.build_config(
+                {
+                    "report": {"categories": {"codeql": {"outputs": {"email": False}}}},
+                    "organizations": [{"name": "o"}],
+                }
             )
 
 

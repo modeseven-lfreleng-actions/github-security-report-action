@@ -10,11 +10,12 @@ sections 10-11.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from rich.console import Console
 from rich.table import Table
 
+from github_security_report.categories import CategoryKey
 from github_security_report.models import Repo, RepoSignal, SignalType
 from github_security_report.render import markdown
 from github_security_report.report import (
@@ -164,7 +165,14 @@ def render_table_section(
     console.print()
 
 
-def render_org(org: OrgReport, console: Console, *, top_n: int | None = None) -> None:
+def render_org(
+    org: OrgReport,
+    console: Console,
+    *,
+    top_n: int | None = None,
+    show: Callable[[CategoryKey], bool] | None = None,
+) -> None:
+    visible = show or (lambda _key: True)
     console.rule(f"[bold]Security report: {org.org}[/bold]")
     console.print(f"[dim]{org.repo_count} repositories analysed[/dim]\n")
     if org.partial:
@@ -173,17 +181,23 @@ def render_org(org: OrgReport, console: Console, *, top_n: int | None = None) ->
             "read; some repositories may be missing.[/yellow]\n"
         )
     for section in org.sections:
-        render_section(section, console, excluded=org.excluded_repos, top_n=top_n)
+        if visible(section.signal.category_key):
+            render_section(
+                section, console, excluded=org.excluded_repos, top_n=top_n
+            )
         if section.signal is SignalType.DEPENDABOT:
             for table in org.dependabot_tables:
-                render_table_section(
-                    table, console, excluded=org.excluded_repos, top_n=top_n
-                )
-    if org.releases is not None:
+                if visible(table.category.key):
+                    render_table_section(
+                        table, console, excluded=org.excluded_repos, top_n=top_n
+                    )
+    if org.releases is not None and visible(org.releases.category.key):
         render_table_section(
             org.releases, console, excluded=org.excluded_repos, top_n=top_n
         )
-    if org.mutable_releases is not None:
+    if org.mutable_releases is not None and visible(
+        org.mutable_releases.category.key
+    ):
         render_table_section(
             org.mutable_releases, console, excluded=org.excluded_repos, top_n=top_n
         )

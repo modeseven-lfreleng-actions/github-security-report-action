@@ -233,6 +233,40 @@ The per-org `exclude` list removes repositories from analysis entirely; they are
 reported as **excluded** (distinct from "not enabled"), so an intentional
 exclusion is visible rather than silently dropped.
 
+### Per-category render toggles
+
+Every reporting category can be switched on or off, globally and per output
+surface, under `report.categories`. Data is **always** collected; these toggles
+govern presentation only. Each category key takes an `enabled` switch (highest
+precedence — `false` hides it everywhere) and a lower-precedence `outputs` map
+for the four surfaces (`cli`, `slack`, `markdown`, `html`). Everything defaults
+to `true`, so an omitted category or key stays fully enabled. A category is
+rendered on a surface only when `enabled` **and** that surface's toggle are
+both true.
+
+```json
+{
+  "report": {
+    "categories": {
+      "zizmor": { "enabled": false },
+      "releases": { "outputs": { "cli": false, "slack": false } }
+    }
+  },
+  "organizations": [{ "name": "lfreleng-actions" }]
+}
+```
+
+The example above hides Zizmor on every surface, and keeps Releases / Tagging
+out of the terminal and Slack while still publishing it to the Markdown and HTML
+Pages output. The valid category keys are: `codeql`, `scorecard`, `zizmor`,
+`dependabot_alerts`, `secret_scanning`, `dependabot_alerts_enabled`,
+`dependabot_updates_enabled`, `dependabot_cooldown`, `releases`,
+`mutable_releases`. Like the other `report` settings, `categories` can be set
+globally and overridden per organisation (overrides merge key-by-key, so
+flipping one output leaves the rest untouched). The machine-readable
+`report.json` artifact always contains the complete dataset, regardless of these
+toggles.
+
 `slack.channel` is optional. The action's `slack_channel` input (wired to the
 `SLACK_CHANNEL_ID` variable in `reporting.yaml`) overrides it, so the channel
 can live as an org/repo variable rather than in the config JSON. It must be the
