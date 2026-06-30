@@ -20,12 +20,13 @@ import sys
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
+from typing import NoReturn
 
 import typer
 from rich.console import Console
 
 from github_security_report import __version__, collect, config, gitctx, runner
-from github_security_report.client import GitHubClient
+from github_security_report.client import GitHubClient, NetworkError
 from github_security_report.config import Config, OrgConfig
 from github_security_report.models import RepoSignal
 from github_security_report.render import html as html_render
@@ -189,6 +190,19 @@ def _load_config(
 # --------------------------------------------------------------------------- #
 # Modes
 # --------------------------------------------------------------------------- #
+def _abort_network(console: Console, exc: NetworkError) -> NoReturn:
+    """Abort the run on an unrecoverable network failure.
+
+    Prints the multi-line network diagnostics in red and exits with code 3
+    (distinct from 2, used for usage/config errors) so callers can tell a
+    connectivity failure from a misconfiguration. ``markup=False`` keeps
+    bracketed text in the diagnostics (e.g. an ``[Errno 8]`` cause) literal
+    rather than letting Rich parse it as markup.
+    """
+    console.print(str(exc), style="red", markup=False)
+    raise typer.Exit(3)
+
+
 async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
                    pages_url: str | None, top_n: int | None, force_notify: bool,
                    slack_channel: str | None = None,
@@ -433,33 +447,39 @@ def report(
 
     if mode is runner.Mode.ORG:
         assert cfg is not None
-        code = asyncio.run(
-            _run_org(
-                cfg, console=console,
-                output_dir=Path(output_dir) if output_dir else None,
-                pages_url=pages_url, top_n=top_n, force_notify=force_notify,
-                slack_channel=slack_channel or None,
-                repo_min_age_days=repo_min_age_days,
-                release_max_age_days=release_max_age_days,
-                releases_exclude=tuple(releases_exclude) if releases_exclude else None,
-                top_n_report=top_n_report,
-                top_n_cli=top_n_cli,
-                top_n_slack=top_n_slack,
+        try:
+            code = asyncio.run(
+                _run_org(
+                    cfg, console=console,
+                    output_dir=Path(output_dir) if output_dir else None,
+                    pages_url=pages_url, top_n=top_n, force_notify=force_notify,
+                    slack_channel=slack_channel or None,
+                    repo_min_age_days=repo_min_age_days,
+                    release_max_age_days=release_max_age_days,
+                    releases_exclude=tuple(releases_exclude) if releases_exclude else None,
+                    top_n_report=top_n_report,
+                    top_n_cli=top_n_cli,
+                    top_n_slack=top_n_slack,
+                )
             )
-        )
+        except NetworkError as exc:
+            _abort_network(console, exc)
     else:
         assert detected is not None
         # In repo mode there is no per-org config; honour report.ruleset_workflows
         # from a supplied config (e.g. --scope repo with --config) so keyword
         # customisation applies, falling back to the built-in default otherwise.
         rw = cfg.report.ruleset_workflows if cfg is not None else None
-        code = asyncio.run(
-            _run_repo(
-                detected[0], detected[1], token_env=token_env,
-                console=console, fail_threshold=fail_threshold,
-                ruleset_workflows=rw,
+        try:
+            code = asyncio.run(
+                _run_repo(
+                    detected[0], detected[1], token_env=token_env,
+                    console=console, fail_threshold=fail_threshold,
+                    ruleset_workflows=rw,
+                )
             )
-        )
+        except NetworkError as exc:
+            _abort_network(console, exc)
     raise typer.Exit(code)
 
 

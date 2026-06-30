@@ -83,8 +83,12 @@ Posture booleans (no ranking, feed coverage/nag): Security policy, Private
 vulnerability reporting, Security advisories, etc.
 
 **Resilience:** every section is **best-effort and independently degradable** —
-an unavailable signal/API renders "no data available" and **never fails the
-whole run**.
+an unavailable individual signal renders "no data available" and **never fails
+the whole run**. The one exception is a **transport failure to the GitHub API
+itself** (DNS/connect/TLS/read timeout that outlives the shared retry budget):
+the run **hard-fails** with a network error, because a report built without any
+live GitHub data would read as falsely reassuring. A transport failure to the
+third-party Scorecard endpoint still degrades that one signal only.
 
 ### Deferred
 

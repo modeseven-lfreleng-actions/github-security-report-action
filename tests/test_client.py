@@ -10,7 +10,11 @@ import httpx
 import pytest
 import respx
 
-from github_security_report.client import GitHubClient
+from github_security_report.client import (
+    API_MAX_RETRIES,
+    GitHubClient,
+    NetworkError,
+)
 
 API = "https://api.github.com"
 SCORECARD = "https://api.securityscorecards.dev"
@@ -228,14 +232,53 @@ async def test_genuine_403_not_retried(client: GitHubClient) -> None:
 
 
 @respx.mock
-async def test_transport_error_becomes_indeterminate(client: GitHubClient) -> None:
-    # A transport failure (DNS/TLS/connect/read) must not abort the run; it is
-    # converted into an indeterminate non-200 status so signals degrade.
-    respx.get(f"{API}/repos/o/r/secret-scanning/alerts").mock(
+async def test_github_transport_failure_raises_network_error(
+    client: GitHubClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A transport failure (DNS/TLS/connect/read) to the GitHub API that
+    # survives every retry must hard-fail with NetworkError rather than
+    # fabricating a degraded result: a report built without live data is
+    # actively misleading (e.g. empty tables rendered as "all clean").
+    slept: list[float] = []
+
+    async def _fake_sleep(delay: float) -> None:
+        slept.append(delay)
+
+    monkeypatch.setattr("github_security_report.client.asyncio.sleep", _fake_sleep)
+    route = respx.get(f"{API}/repos/o/r/secret-scanning/alerts")
+    route.mock(side_effect=httpx.ConnectError("boom"))
+
+    with pytest.raises(NetworkError) as excinfo:
+        await client.secret_scanning_status("o", "r")
+
+    # The initial attempt plus API_MAX_RETRIES retries were made, with
+    # exponential backoff (1s, 2s, 4s) between them.
+    assert route.call_count == API_MAX_RETRIES + 1
+    assert slept == [1.0, 2.0, 4.0]
+    # The message carries the friendly line plus a dedicated host/port line.
+    msg = str(excinfo.value)
+    assert "GitHub API is unreachable" in msg
+    assert "host=api.github.com" in msg
+    assert "port=443" in msg
+
+
+@respx.mock
+async def test_external_transport_failure_degrades_not_raises(
+    client: GitHubClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A transport failure to the third-party Scorecard API must NOT abort the
+    # whole run; it degrades that one signal to an indeterminate 503 so a
+    # flaky external dependency never blocks the GitHub report.
+    async def _fake_sleep(delay: float) -> None:
+        return None
+
+    monkeypatch.setattr("github_security_report.client.asyncio.sleep", _fake_sleep)
+    respx.get(url__startswith=f"{SCORECARD}/projects/github.com/o/r").mock(
         side_effect=httpx.ConnectError("boom")
     )
-    status = await client.secret_scanning_status("o", "r")
+    status, score = await client.scorecard_score("o", "r")
     assert status == 503
+    assert score is None
 
 
 @respx.mock
