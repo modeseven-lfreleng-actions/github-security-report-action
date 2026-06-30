@@ -393,7 +393,7 @@ def report(
     fail_threshold: str = typer.Option("none", "--fail-threshold", help="none|low|medium|high|critical|any (repo mode)."),
     force_notify: bool = typer.Option(False, "--force-notify", help="Post to Slack regardless of report_day."),
     repo_min_age_days: int | None = typer.Option(None, "--repo-min-age-days", "--release-min-age-days", help="Exclude repos created within N days from Releases/Tagging (0 = include all; default: config, else 28). --release-min-age-days is a deprecated alias."),
-    release_max_age_days: int | None = typer.Option(None, "--release-max-age-days", help="Flag a repo in Releases/Tagging only when its newest release or tag is older than N days (0 = flag every eligible repo; default: config, else 0)."),
+    release_max_age_days: int | None = typer.Option(None, "--release-max-age-days", help="Flag a repo in Releases/Tagging only when its newest release or tag is older than N days (0 = flag every eligible repo; default: config, else 60)."),
     releases_exclude: list[str] | None = typer.Option(None, "--releases-exclude", help="Repository name to omit from the Releases/Tagging table (repeatable; overrides config)."),
     no_color: bool = typer.Option(False, "--no-color", help="Disable coloured output."),
 ) -> None:

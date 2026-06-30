@@ -46,9 +46,10 @@ tables (org mode):
   release/tag staleness (repository age never affects ordering; a repository
   with no release or tag ranks highest). Repositories younger than
   `repo_min_age_days` (default 28; `0` includes all) and those in
-  `releases_exclude` are omitted. Set `release_max_age_days` to only flag
-  repositories whose newest release or tag is older than that many days
-  (default `0` = flag every eligible repository).
+  `releases_exclude` are omitted. A repository is flagged only when its newest
+  release or tag is older than `release_max_age_days` (default 60; `0` flags
+  every eligible repository), so a repository released or tagged within that
+  window counts as recently maintained and drops out of the table.
 
 ## Operating modes
 
@@ -178,7 +179,7 @@ environment-variable name, never embedded.
     "include_archived": false,
     "include_test": false,
     "repo_min_age_days": 28,
-    "release_max_age_days": 0
+    "release_max_age_days": 60
   },
   "organizations": [
     {
@@ -207,10 +208,10 @@ The Releases / Tagging section has two independent freshness levers:
   period that omits **brand-new repositories** — those *created* within that
   many days — before a release or tag is expected of them. CLI:
   `--repo-min-age-days`.
-- `report.release_max_age_days` (default `0` = flag everything) is the
+- `report.release_max_age_days` (default `60`; `0` = flag everything) is the
   release-staleness threshold: a repository is only flagged when its newest
   release **or** tag is older than that many days (a repository with neither is
-  always flagged). Raise it to match your release cadence so actively released
+  always flagged). Tune it to match your release cadence so actively released
   repositories drop out of the table. CLI: `--release-max-age-days`.
 
 The per-org `releases_exclude` (CLI `--releases-exclude`, repeatable) drops

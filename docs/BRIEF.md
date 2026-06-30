@@ -137,10 +137,11 @@ reported in **two separate columns** as a human "last release / last tag" age.
   (default **28**, CLI `--repo-min-age-days`) are excluded; **0** disables
   the hold so every repository is included. (`release_min_age_days` /
   `--release-min-age-days` are deprecated aliases of this control.)
-- **Release-staleness threshold:** `report.release_max_age_days` (default **0**,
-  CLI `--release-max-age-days`) flags a repository only when its newest release
-  **or** tag is older than that many days; a repository with neither is always
-  flagged. **0** disables the threshold, so every eligible repository is listed.
+- **Release-staleness threshold:** `report.release_max_age_days` (default
+  **60**, CLI `--release-max-age-days`) flags a repository only when its newest
+  release **or** tag is older than that many days; a repository with neither is
+  always flagged. **0** disables the threshold, so every eligible repository is
+  listed.
 - **On-demand exclusions:** `releases_exclude` (per org; CLI `--releases-exclude`,
   repeatable) drops repositories that are never released / not consumed
   externally.
@@ -262,7 +263,7 @@ Sketch:
     "include_archived": false,
     "include_test": false,
     "repo_min_age_days": 28,
-    "release_max_age_days": 0
+    "release_max_age_days": 60
   },
   "organizations": [
     {
@@ -276,9 +277,9 @@ Sketch:
 ```
 
 - `report.repo_min_age_days` (default `28`, `0` = include all) is the
-  repository-age grace period and `report.release_max_age_days` (default `0` =
-  flag every eligible repo) is the release-staleness threshold; together with
-  the per-org `releases_exclude` they control the Releases / Tagging section
+  repository-age grace period and `report.release_max_age_days` (default `60`;
+  `0` = flag every eligible repo) is the release-staleness threshold; together
+  with the per-org `releases_exclude` they control the Releases / Tagging section
   (§4). All three can be overridden at the CLI with `--repo-min-age-days`,
   `--release-max-age-days`, and the repeatable `--releases-exclude`. The former
   `release_min_age_days` key (and `--release-min-age-days` flag) is a deprecated

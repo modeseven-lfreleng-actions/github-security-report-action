@@ -165,8 +165,10 @@ class ReportConfig:
     # A repository is flagged in the Releases/Tagging table only when its most
     # recent release or tag is older than this many days; a repository with
     # neither a release nor a tag is always flagged. 0 disables the threshold,
-    # so every eligible repository is listed (ranked by staleness).
-    release_max_age_days: int = 0
+    # so every eligible repository is listed (ranked by staleness). The default
+    # gives every repository a 60-day window: one tagged or released inside that
+    # window is treated as recently maintained and omitted from the table.
+    release_max_age_days: int = 60
     # Read-only mapping (frozen dataclasses do not deep-freeze a plain dict, so a
     # MappingProxyType prevents in-place mutation of a shared config).
     ruleset_workflows: Mapping[str, str] = field(

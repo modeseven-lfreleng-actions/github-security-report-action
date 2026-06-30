@@ -133,7 +133,7 @@ class TestBuildConfig:
         assert org.report.repo_min_age_days == 14
 
     def test_release_max_age_days_default_and_override(self) -> None:
-        assert config.build_config(MINIMAL).report.release_max_age_days == 0
+        assert config.build_config(MINIMAL).report.release_max_age_days == 60
         data = {
             "report": {"release_max_age_days": 60},
             "organizations": [
