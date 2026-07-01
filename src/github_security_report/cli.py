@@ -114,6 +114,7 @@ def _org_to_dict(org: OrgReport) -> dict:
                             "high": rs.counts.high,
                             "medium": rs.counts.medium,
                             "low": rs.counts.low,
+                            "informational": rs.counts.informational,
                             "total": rs.counts.total,
                         },
                         "score": rs.score,

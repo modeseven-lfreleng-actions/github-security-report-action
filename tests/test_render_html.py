@@ -50,6 +50,28 @@ class TestOrgHtml:
         assert "Disabled" in out
         assert '<a href="https://github.com/o/nagme">nagme</a>' in out
 
+    def test_informational_column_shown_when_present(self) -> None:
+        # A zizmor offender with note-level findings adds an Info column header;
+        # a severity table without info findings does not.
+        zizmor = RepoSignal(
+            _repo("noisy"),
+            SignalType.ZIZMOR,
+            RepoState.OFFENDER,
+            SeverityCounts(high=2, informational=3),
+        )
+        out = html.render_org_html(_org("o", [zizmor]))
+        assert ">Info</th>" in out
+
+    def test_informational_column_absent_without_info(self) -> None:
+        codeql = RepoSignal(
+            _repo("bad"),
+            SignalType.CODEQL,
+            RepoState.OFFENDER,
+            SeverityCounts(critical=1, high=2),
+        )
+        out = html.render_org_html(_org("o", [codeql]))
+        assert ">Info</th>" not in out
+
     def test_datatables_pinned_not_latest(self) -> None:
         out = html.render_org_html(_org("o", []))
         assert f"simple-datatables@{html.DATATABLES_VERSION}" in out

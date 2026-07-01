@@ -24,6 +24,7 @@ from github_security_report.report import (
     TableSection,
     build_summary,
     offender_column_totals,
+    section_shows_informational,
     truncate,
 )
 
@@ -35,26 +36,28 @@ _SLACK_MAX_BLOCKS = 50
 _NAME_LIST_LABEL = {"disabled": "Disabled", "excluded": "Excluded"}
 
 
-def _plain_columns(signal: SignalType) -> list[str]:
+def _plain_columns(signal: SignalType, *, informational: bool = False) -> list[str]:
     if signal is SignalType.SECRET_SCANNING:
         return ["Repository", "Open"]
+    info = ["I"] if informational else []
     if signal is SignalType.SCORECARD:
-        return ["Repository", "Score", "C", "H", "M", "L"]
-    return ["Repository", "C", "H", "M", "L"]
+        return ["Repository", "Score", "C", "H", "M", "L", *info]
+    return ["Repository", "C", "H", "M", "L", *info]
 
 
-def _plain_row(sig: RepoSignal) -> list[str]:
+def _plain_row(sig: RepoSignal, *, informational: bool = False) -> list[str]:
     c = sig.counts
     if sig.signal is SignalType.SECRET_SCANNING:
         return [sig.repo.name, str(c.total)]
+    info = [str(c.informational)] if informational else []
     if sig.signal is SignalType.SCORECARD:
         score = f"{sig.score:.1f}" if sig.score is not None else "-"
-        return [sig.repo.name, score, str(c.critical), str(c.high), str(c.medium), str(c.low)]
-    return [sig.repo.name, str(c.critical), str(c.high), str(c.medium), str(c.low)]
+        return [sig.repo.name, score, str(c.critical), str(c.high), str(c.medium), str(c.low), *info]
+    return [sig.repo.name, str(c.critical), str(c.high), str(c.medium), str(c.low), *info]
 
 
 def _plain_total_row(
-    signal: SignalType, offenders: list[RepoSignal]
+    signal: SignalType, offenders: list[RepoSignal], *, informational: bool = False
 ) -> list[str]:
     """Trailing "Total" row summing the severity columns for Slack tables.
 
@@ -69,19 +72,23 @@ def _plain_total_row(
         str(totals.medium),
         str(totals.low),
     ]
+    info = [str(totals.informational)] if informational else []
     if signal is SignalType.SCORECARD:
-        return ["Total", "", *base]
-    return ["Total", *base]
+        return ["Total", "", *base, *info]
+    return ["Total", *base, *info]
 
 
 def _fixed_table(section: SignalSection, top_n: int) -> str:
-    cols = _plain_columns(section.signal)
     shown, hidden = truncate(section.offenders, top_n)
-    rows = [_plain_row(s) for s in shown]
+    informational = section_shows_informational(shown)
+    cols = _plain_columns(section.signal, informational=informational)
+    rows = [_plain_row(s, informational=informational) for s in shown]
     # A trailing totals row sums the additive severity columns; secret scanning
     # has no such columns, so skip it. Summed over the shown (truncated) rows.
     if section.signal.uses_severity_columns and shown:
-        rows.append(_plain_total_row(section.signal, shown))
+        rows.append(
+            _plain_total_row(section.signal, shown, informational=informational)
+        )
     widths = [len(c) for c in cols]
     for row in rows:
         for i, cell in enumerate(row):

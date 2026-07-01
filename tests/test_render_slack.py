@@ -54,6 +54,37 @@ def test_payload_enforces_slack_block_limit() -> None:
     assert "truncated" in blocks[-1]["elements"][0]["text"]
 
 
+def test_informational_column_in_slack_when_present() -> None:
+    # Slack uses single-letter severity headers; the sub-low Info column is "I"
+    # and appears only when a table carries note-level findings.
+    sig = RepoSignal(
+        _repo("noisy"),
+        SignalType.ZIZMOR,
+        RepoState.OFFENDER,
+        SeverityCounts(high=2, informational=3),
+    )
+    blocks = slack.render_org_blocks(_org([sig]), top_n=10, pages_url=None)
+    text = next(
+        b["text"]["text"]
+        for b in blocks
+        if "Zizmor" in b.get("text", {}).get("text", "")
+    )
+    # Header carries the I column; hidden for tables without info findings.
+    assert " I" in text
+    codeql = RepoSignal(
+        _repo("bad"), SignalType.CODEQL, RepoState.OFFENDER, SeverityCounts(critical=1)
+    )
+    blocks2 = slack.render_org_blocks(_org([codeql]), top_n=10, pages_url=None)
+    ctext = next(
+        b["text"]["text"]
+        for b in blocks2
+        if "CodeQL" in b.get("text", {}).get("text", "")
+    )
+    # No info findings -> the single-letter header row has no trailing " I".
+    header_line = ctext.split("```")[1].splitlines()[1]
+    assert not header_line.rstrip().endswith(" I")
+
+
 def test_offenders_are_code_fenced() -> None:
     sig = RepoSignal(
         _repo("bad"), SignalType.CODEQL, RepoState.OFFENDER, SeverityCounts(critical=1)

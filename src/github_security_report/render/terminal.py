@@ -25,10 +25,15 @@ from github_security_report.report import (
     SummaryLine,
     TableSection,
     build_summary,
+    section_shows_informational,
     truncate,
 )
 
 _SEVERITY_STYLE = {"critical": "bold red", "high": "red", "medium": "yellow", "low": "dim"}
+
+# The sub-low Informational column (shown only when a table carries note-level
+# findings) is the least urgent, so it is dimmed like the Low column.
+_INFORMATIONAL_STYLE = "dim"
 
 # Rich style per summary-footer kind, shared by signal and table sections.
 _SUMMARY_STYLE = {
@@ -43,7 +48,9 @@ _SUMMARY_STYLE = {
 _NAME_LIST_LABEL = {"disabled": "Disabled", "excluded": "Excluded"}
 
 
-def _add_columns(table: Table, signal: SignalType) -> None:
+def _add_columns(
+    table: Table, signal: SignalType, *, informational: bool = False
+) -> None:
     table.add_column("Repository", overflow="fold")
     if signal is SignalType.SECRET_SCANNING:
         table.add_column("Open", justify="right")
@@ -52,19 +59,22 @@ def _add_columns(table: Table, signal: SignalType) -> None:
         table.add_column("Score", justify="right")
     for name, style in _SEVERITY_STYLE.items():
         table.add_column(name.capitalize(), justify="right", style=style)
+    if informational:
+        table.add_column("Info", justify="right", style=_INFORMATIONAL_STYLE)
     if signal is not SignalType.SCORECARD:
         table.add_column("Total", justify="right")
 
 
-def _row(sig: RepoSignal) -> list[str]:
+def _row(sig: RepoSignal, *, informational: bool = False) -> list[str]:
     c = sig.counts
     if sig.signal is SignalType.SECRET_SCANNING:
         return [sig.repo.name, str(c.total)]
     base = [str(c.critical), str(c.high), str(c.medium), str(c.low)]
+    info = [str(c.informational)] if informational else []
     if sig.signal is SignalType.SCORECARD:
         score = f"{sig.score:.1f}" if sig.score is not None else "—"
-        return [sig.repo.name, score, *base]
-    return [sig.repo.name, *base, str(c.total)]
+        return [sig.repo.name, score, *base, *info]
+    return [sig.repo.name, *base, *info, str(c.total)]
 
 
 def _truncated_names(names: Sequence[str], top_n: int | None) -> str:
@@ -108,16 +118,19 @@ def render_section(
 ) -> None:
     offenders, hidden_offenders = truncate(section.offenders, top_n)
     if offenders:
+        informational = section_shows_informational(offenders)
         table = Table(title=section.signal.heading, title_justify="left", title_style="bold")
-        _add_columns(table, section.signal)
+        _add_columns(table, section.signal, informational=informational)
         for sig in offenders:
-            table.add_row(*_row(sig))
+            table.add_row(*_row(sig, informational=informational))
         # A trailing totals row sums the additive severity columns across the
         # rows shown above. Secret scanning has no such columns, so skip it.
         if section.signal.uses_severity_columns:
             table.add_section()
             table.add_row(
-                *markdown.total_row_cells(section.signal, offenders),
+                *markdown.total_row_cells(
+                    section.signal, offenders, informational=informational
+                ),
                 style="bold",
             )
         console.print(table)
