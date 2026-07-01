@@ -51,6 +51,33 @@ def test_offender_table_rendered() -> None:
     assert "bad" in out
 
 
+def test_informational_column_shown_when_present() -> None:
+    # A zizmor offender carrying note-level findings gets an Info column,
+    # and the informational count contributes to the Total column.
+    sig = RepoSignal(
+        _repo("noisy"),
+        SignalType.ZIZMOR,
+        RepoState.OFFENDER,
+        SeverityCounts(high=2, informational=3),
+    )
+    out = _render(_org([sig]))
+    assert "Info" in out
+    # Header order and both the row and totals carry the 3 info / 5 total.
+    assert "Zizmor" in out
+    assert "noisy" in out
+
+
+def test_informational_column_absent_without_info() -> None:
+    sig = RepoSignal(
+        _repo("bad"),
+        SignalType.CODEQL,
+        RepoState.OFFENDER,
+        SeverityCounts(critical=1, high=2),
+    )
+    out = _render(_org([sig]))
+    assert "Info" not in out
+
+
 def test_clean_nag_unknown_notes() -> None:
     signals = [
         RepoSignal(_repo("clean"), SignalType.CODEQL, RepoState.CLEAN),

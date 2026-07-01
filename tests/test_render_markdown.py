@@ -44,6 +44,34 @@ class TestSection:
         assert "[bad](https://github.com/o/bad)" in out
         assert "| 1 | 2 | 0 | 0 | 3 |" in out
 
+    def test_informational_column_shown_when_offender_has_info(self) -> None:
+        # The sub-low Info column appears only when a table carries note-level
+        # (informational) findings; its counts feed the Total column too.
+        sig = RepoSignal(
+            _repo("noisy"),
+            SignalType.ZIZMOR,
+            RepoState.OFFENDER,
+            SeverityCounts(high=2, informational=3),
+        )
+        section = next(s for s in _org([sig]).sections if s.signal is SignalType.ZIZMOR)
+        out = markdown.render_section(section)
+        assert "| Repository | Critical | High | Medium | Low | Info | Total |" in out
+        assert "| 0 | 2 | 0 | 0 | 3 | 5 |" in out
+        # The trailing Total row also carries the Info column total.
+        assert "| Total | 0 | 2 | 0 | 0 | 3 | 5 |" in out
+
+    def test_informational_column_hidden_without_info_findings(self) -> None:
+        # No informational findings -> no Info column (no all-zero padding).
+        sig = RepoSignal(
+            _repo("bad"),
+            SignalType.CODEQL,
+            RepoState.OFFENDER,
+            SeverityCounts(critical=1, high=2),
+        )
+        out = markdown.render_section(_org([sig]).sections[0])
+        assert "| Repository | Critical | High | Medium | Low | Total |" in out
+        assert "Info" not in out
+
     def test_secret_scanning_single_count_column(self) -> None:
         sig = RepoSignal(
             _repo("leaky"),

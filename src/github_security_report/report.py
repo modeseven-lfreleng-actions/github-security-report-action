@@ -301,6 +301,18 @@ def offender_column_totals(offenders: Sequence[RepoSignal]) -> SeverityCounts:
     return totals
 
 
+def section_shows_informational(offenders: Sequence[RepoSignal]) -> bool:
+    """Whether any offender carries informational (sub-low) findings.
+
+    Drives the conditional Informational severity column: it is rendered only
+    for tables that actually have sub-low findings -- e.g. zizmor's note-level
+    results -- so severity tables without such data (CodeQL, Dependabot alerts)
+    are not padded with an all-zero column. Callers pass the displayed
+    (already-truncated) offenders, so the column matches the visible rows.
+    """
+    return any(sig.counts.informational for sig in offenders)
+
+
 def build_org_report(
     org: str,
     repo_signals: list[RepoSignal],
