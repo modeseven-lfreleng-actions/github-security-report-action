@@ -26,6 +26,7 @@ from github_security_report.report import (
     SummaryLine,
     TableSection,
     build_summary,
+    section_shows_informational,
     truncate,
 )
 
@@ -64,9 +65,9 @@ def slugify(org: str) -> str:
     return slug or "org"
 
 
-def _row_cells(sig: RepoSignal) -> list[str]:
+def _row_cells(sig: RepoSignal, *, informational: bool = False) -> list[str]:
     # Reuse the Markdown row shape (public API), dropping the leading repo cell.
-    return markdown.row_cells(sig)[1:]
+    return markdown.row_cells(sig, informational=informational)[1:]
 
 
 def _summary_context(
@@ -146,10 +147,13 @@ def _section_context(
     top_n: int | None = None,
 ) -> dict:
     offenders, hidden = truncate(section.offenders, top_n)
+    informational = section_shows_informational(offenders)
     # A trailing totals row sums the additive severity columns across the shown
     # rows; secret scanning has no such columns, so it gets none.
     total_cells = (
-        markdown.total_row_cells(section.signal, offenders)
+        markdown.total_row_cells(
+            section.signal, offenders, informational=informational
+        )
         if section.signal.uses_severity_columns and offenders
         else None
     )
@@ -162,9 +166,13 @@ def _section_context(
         # Severity sections have numeric count columns after the leading
         # repository column, so they are right-aligned with tabular figures.
         "numeric": True,
-        "columns": markdown.columns(section.signal),
+        "columns": markdown.columns(section.signal, informational=informational),
         "rows": [
-            {"name": s.repo.name, "url": s.repo.html_url, "cells": _row_cells(s)}
+            {
+                "name": s.repo.name,
+                "url": s.repo.html_url,
+                "cells": _row_cells(s, informational=informational),
+            }
             for s in offenders
         ],
         "hidden": hidden,

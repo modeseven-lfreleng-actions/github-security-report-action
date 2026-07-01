@@ -175,7 +175,11 @@ reported in **two separate columns** as a human "last release / last tag" age.
   **zizmor** lowers it to **low** (only informational passes). The cutoff is
   overridable per category via `report.categories.<key>.fail_severity`.
 - When severity data exists, show **separate columns** (critical / high /
-  medium / low).
+  medium / low). The sub-low **informational** column is shown **only when the
+  displayed offenders actually carry informational (SARIF `note`) findings** —
+  e.g. zizmor — so severity tables without such data (CodeQL, most Dependabot
+  alerts) are not padded with an all-zero column. When shown, its counts feed
+  the trailing `Total` column, so the visible severity columns sum vertically.
 - **Row sort:** hierarchical, worst-first — critical desc → high desc →
   medium desc → low desc. Scorecard sorts by score **ascending** (lowest =
   worst = top).

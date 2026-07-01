@@ -25,6 +25,7 @@ from github_security_report.report import (
     TableSection,
     build_summary,
     offender_column_totals,
+    section_shows_informational,
     truncate,
 )
 
@@ -36,35 +37,38 @@ def _link(repo: Repo) -> str:
     return f"[{repo.name}]({repo.html_url})"
 
 
-def _columns(signal: SignalType) -> list[str]:
+def _columns(signal: SignalType, *, informational: bool = False) -> list[str]:
     if signal is SignalType.SECRET_SCANNING:
         return ["Repository", "Open"]
+    info = ["Info"] if informational else []
     if signal is SignalType.SCORECARD:
-        return ["Repository", "Score", "Critical", "High", "Medium", "Low"]
-    return ["Repository", "Critical", "High", "Medium", "Low", "Total"]
+        return ["Repository", "Score", "Critical", "High", "Medium", "Low", *info]
+    return ["Repository", "Critical", "High", "Medium", "Low", *info, "Total"]
 
 
-def _row(sig: RepoSignal) -> list[str]:
+def _row(sig: RepoSignal, *, informational: bool = False) -> list[str]:
     c = sig.counts
     if sig.signal is SignalType.SECRET_SCANNING:
         return [_link(sig.repo), str(c.total)]
+    info = [str(c.informational)] if informational else []
     if sig.signal is SignalType.SCORECARD:
         score = f"{sig.score:.1f}" if sig.score is not None else "—"
-        return [_link(sig.repo), score, str(c.critical), str(c.high), str(c.medium), str(c.low)]
-    return [_link(sig.repo), str(c.critical), str(c.high), str(c.medium), str(c.low), str(c.total)]
+        return [_link(sig.repo), score, str(c.critical), str(c.high), str(c.medium), str(c.low), *info]
+    return [_link(sig.repo), str(c.critical), str(c.high), str(c.medium), str(c.low), *info, str(c.total)]
 
 
 def _table(section: SignalSection, top_n: int | None = None) -> list[str]:
-    cols = _columns(section.signal)
+    offenders, hidden = truncate(section.offenders, top_n)
+    informational = section_shows_informational(offenders)
+    cols = _columns(section.signal, informational=informational)
     aligns = ["---"] + ["---:"] * (len(cols) - 1)
     lines = ["| " + " | ".join(cols) + " |", "| " + " | ".join(aligns) + " |"]
-    offenders, hidden = truncate(section.offenders, top_n)
     for sig in offenders:
-        lines.append("| " + " | ".join(_row(sig)) + " |")
+        lines.append("| " + " | ".join(_row(sig, informational=informational)) + " |")
     # Trailing column-totals row, for signals whose columns are additive
     # severity counts (every offender table except secret scanning).
     if section.signal.uses_severity_columns:
-        cells = total_row_cells(section.signal, offenders)
+        cells = total_row_cells(section.signal, offenders, informational=informational)
         lines.append("| " + " | ".join(cells) + " |")
     if hidden:
         lines.append("")
@@ -74,18 +78,26 @@ def _table(section: SignalSection, top_n: int | None = None) -> list[str]:
 
 # Public, render-surface-agnostic accessors for the per-signal table shape, so
 # other renderers (e.g. HTML) do not reach into this module's private helpers.
-def columns(signal: SignalType) -> list[str]:
-    """Column headings for a signal's offender table (repository first)."""
-    return _columns(signal)
+def columns(signal: SignalType, *, informational: bool = False) -> list[str]:
+    """Column headings for a signal's offender table (repository first).
+
+    ``informational`` adds the sub-low Informational column, used only for
+    tables that actually carry such findings (see
+    :func:`report.section_shows_informational`).
+    """
+    return _columns(signal, informational=informational)
 
 
-def row_cells(sig: RepoSignal) -> list[str]:
+def row_cells(sig: RepoSignal, *, informational: bool = False) -> list[str]:
     """Cells for one offender row (the repository link is the first cell)."""
-    return _row(sig)
+    return _row(sig, informational=informational)
 
 
 def total_row_cells(
-    signal: SignalType, offenders: Sequence[RepoSignal]
+    signal: SignalType,
+    offenders: Sequence[RepoSignal],
+    *,
+    informational: bool = False,
 ) -> list[str]:
     """Cells for a trailing "Total" row summing the severity columns.
 
@@ -101,9 +113,10 @@ def total_row_cells(
         str(totals.medium),
         str(totals.low),
     ]
+    info = [str(totals.informational)] if informational else []
     if signal is SignalType.SCORECARD:
-        return ["Total", "", *base]
-    return ["Total", *base, str(totals.total)]
+        return ["Total", "", *base, *info]
+    return ["Total", *base, *info, str(totals.total)]
 
 
 def _summary_lines(
