@@ -48,7 +48,10 @@ def _version_callback(value: bool) -> None:
     if value:
         # Match the dependamerge style: a label emoji plus a Rich-highlighted
         # version number (Rich colourises the numeric version automatically).
-        Console().print(f"🏷️  github-security-report version {__version__}")
+        # A single space follows the emoji: terminals that honour the VS16
+        # emoji-presentation width (e.g. Ghostty) render it two cells wide, so
+        # the extra pad the old double space added now reads as a gap.
+        Console().print(f"🏷️ github-security-report version {__version__}")
         raise typer.Exit()
 
 
@@ -132,6 +135,11 @@ def _org_to_dict(org: OrgReport) -> dict:
         "releases": _table_to_dict(org.releases) if org.releases else None,
         "mutable_releases": (
             _table_to_dict(org.mutable_releases) if org.mutable_releases else None
+        ),
+        "private_vulnerability_reporting": (
+            _table_to_dict(org.private_vulnerability_reporting)
+            if org.private_vulnerability_reporting
+            else None
         ),
     }
 

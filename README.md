@@ -43,7 +43,7 @@ back to code-scanning findings. See [`docs/BRIEF.md`](docs/BRIEF.md) and
 [`docs/phase0-findings.md`](docs/phase0-findings.md) for the full design and the
 API research it is built on.
 
-Two further sections report **configuration posture** and **freshness** as plain
+Further sections report **configuration posture** and **freshness** as plain
 tables (org mode):
 
 - **Dependabot** — three tables: repositories with vulnerability **alerts not
@@ -57,6 +57,12 @@ tables (org mode):
   release or tag is older than `release_max_age_days` (default 60; `0` flags
   every eligible repository), so a repository released or tagged within that
   window counts as recently maintained and drops out of the table.
+- **Private Vulnerability Reporting** — repositories where GitHub's private
+  vulnerability reporting feature is **not enabled**, so security researchers
+  cannot privately disclose vulnerabilities. Probed per repository (GitHub
+  exposes no org-wide or GraphQL equivalent) and, like every other category,
+  always collected; hide it with the `private_vulnerability_reporting` render
+  toggle.
 
 ## Operating modes
 
@@ -132,7 +138,7 @@ organisations. Grant these scopes:
 
 > For organisations that enforce SSO, the PAT must be **SSO-authorised** for
 > each target organisation, or the org-level endpoints return `403` (reported as
-> unknown). Store the token as a secret (e.g. `SECURITY_REPORT_PAT`) and
+> unknown). Store the token as a secret (e.g. `LFRELENG_ACTIONS_REPORT_PAT`) and
 > reference it by env-var name via `token_env`; never embed it in the config.
 
 ## Usage
@@ -146,7 +152,9 @@ organisations. Grant these scopes:
   with:
     scope: "org"
     config: "${{ secrets.GSR_CONFIG || vars.GSR_CONFIG }}"
-    token: "${{ secrets.SECURITY_REPORT_PAT }}"
+    token: "${{ secrets.LFRELENG_ACTIONS_REPORT_PAT }}"
+    # Must match the per-org "token_env" in your config (below).
+    token_env: "LFRELENG_ACTIONS_REPORT_PAT"
     output_dir: "site"
     pages_url: "https://lfreleng-actions.github.io/github-security-report-action/"
 ```
@@ -191,7 +199,7 @@ environment-variable name, never embedded.
   "organizations": [
     {
       "name": "lfreleng-actions",
-      "token_env": "GITHUB_TOKEN",
+      "token_env": "LFRELENG_ACTIONS_REPORT_PAT",
       "exclude": ["actions-template"],
       "releases_exclude": ["internal-only-repo"]
     }
@@ -261,7 +269,8 @@ out of the terminal and Slack while still publishing it to the Markdown and HTML
 Pages output. The valid category keys are: `codeql`, `scorecard`, `zizmor`,
 `dependabot_alerts`, `secret_scanning`, `dependabot_alerts_enabled`,
 `dependabot_updates_enabled`, `dependabot_cooldown`, `releases`,
-`mutable_releases`. Like the other `report` settings, `categories` can be set
+`mutable_releases`, `private_vulnerability_reporting`. Like the other `report`
+settings, `categories` can be set
 globally and overridden per organisation (overrides merge key-by-key, so
 flipping one output leaves the rest untouched). The machine-readable
 `report.json` artifact always contains the complete dataset, regardless of these
@@ -321,7 +330,7 @@ $XDG_CONFIG_HOME/github-security-report/config.json
 An explicit `--config`, `--config-data`, or `--org` always takes precedence, and
 the action itself never reads this path (it is supplied configuration directly).
 Secrets stay out of the file: reference the token by environment-variable name
-via `token_env` (e.g. `SECURITY_REPORT_PAT`, exported in your shell or sourced
+via `token_env` (e.g. `LFRELENG_ACTIONS_REPORT_PAT`, exported in your shell or sourced
 from a secrets file) — the channel ID is the only Slack value the file holds,
 and the Slack **bot token** is consumed by the workflow, not the CLI.
 
@@ -336,7 +345,7 @@ and the Slack **bot token** is consumed by the workflow, not the CLI.
 | `org` | No | — | Single organisation (shorthand for org mode) |
 | `repo` | No | detected | `owner/name` for repo mode |
 | `token` | No | `${{ github.token }}` | PAT (org mode) or `GITHUB_TOKEN` (repo mode) |
-| `token_env` | No | `GITHUB_TOKEN` | Env var name the tool reads the token from |
+| `token_env` | No | `GITHUB_TOKEN` | Env var name the token is exported under. In org mode it **must match** the per-org `token_env` in your config (e.g. `LFRELENG_ACTIONS_REPORT_PAT`), otherwise the tool looks up an unset variable and reports no token. |
 | `output_dir` | No | — | Directory for Pages output (org mode) |
 | `pages_url` | No | — | Published Pages URL (used in the Slack link) |
 | `slack_channel` | No | — | Slack channel ID; overrides the config `slack.channel` (e.g. the `SLACK_CHANNEL_ID` variable) |

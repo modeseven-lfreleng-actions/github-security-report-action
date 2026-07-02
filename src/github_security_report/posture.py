@@ -48,6 +48,8 @@ class RepoPosture:
     # Dependabot repo-level feature flags (None = indeterminate).
     dependabot_alerts: bool | None = None
     security_updates: bool | None = None
+    # GitHub "private vulnerability reporting" enablement (None = indeterminate).
+    private_vulnerability_reporting: bool | None = None
     # Ecosystems declared in .github/dependabot.yml that set no cooldown.
     cooldown_missing: tuple[str, ...] = ()
     # True when .github/dependabot.yml exists and declares version updates.
@@ -240,6 +242,25 @@ def build_dependabot_tables(postures: list[RepoPosture]) -> list[TableSection]:
     ]
 
 
+def build_pvr_table(postures: list[RepoPosture]) -> TableSection:
+    """Repositories where private vulnerability reporting is not enabled.
+
+    Like the Dependabot enablement tables this is a single-boolean feature
+    check, so it reuses :func:`_build_feature_table`: offenders are repositories
+    where the feature is confirmed off; an indeterminate (``None``) reading
+    counts towards neither side of the standardised summary footer. The table is
+    always built (the flag is probed for every repository); the per-category
+    render toggle governs whether it is shown.
+    """
+    return _build_feature_table(
+        postures,
+        category_key=CategoryKey.PRIVATE_VULNERABILITY_REPORTING,
+        columns=("Repository",),
+        enabled_of=lambda p: p.private_vulnerability_reporting,
+    )
+
+
+
 def build_releases_table(
     postures: list[RepoPosture],
     *,
@@ -390,4 +411,5 @@ __all__ = [
     "build_alerts_table",
     "build_security_updates_table",
     "build_cooldown_table",
+    "build_pvr_table",
 ]

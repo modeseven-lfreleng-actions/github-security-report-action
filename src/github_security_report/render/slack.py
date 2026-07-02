@@ -239,6 +239,14 @@ def render_org_blocks(
         block = _table_block(org.mutable_releases, top_n, excluded=excluded)
         if block is not None:
             blocks.append(block)
+    if org.private_vulnerability_reporting is not None and visible(
+        org.private_vulnerability_reporting.category.key
+    ):
+        block = _table_block(
+            org.private_vulnerability_reporting, top_n, excluded=excluded
+        )
+        if block is not None:
+            blocks.append(block)
     if pages_url:
         blocks.append(
             {

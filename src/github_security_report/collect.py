@@ -72,6 +72,12 @@ class ClientProtocol(Protocol):
         """Whether Dependabot automated security fixes are enabled."""
         raise NotImplementedError
 
+    async def private_vulnerability_reporting(
+        self, org: str, repo: str
+    ) -> bool | None:
+        """Whether private vulnerability reporting is enabled for a repository."""
+        raise NotImplementedError
+
     async def repo_graph_batch(
         self, org: str, names: list[str]
     ) -> dict[str, RepoGraphData]:
@@ -199,11 +205,18 @@ async def _posture_for_repo(
     """Build one repo's Dependabot posture and release/tag freshness.
 
     ``dependabot_alerts`` and the release/tag/``dependabot.yml`` data come from
-    the batched GraphQL prefetch (:func:`_collect_graph`); only the
-    security-updates flag remains a per-repo REST call, since GitHub exposes no
-    GraphQL equivalent.
+    the batched GraphQL prefetch (:func:`_collect_graph`); the security-updates
+    and private-vulnerability-reporting flags remain per-repo REST calls, since
+    GitHub exposes no GraphQL equivalent. They are independent, so they are
+    gathered together and the two reads overlap (bounded by the client
+    semaphore); private vulnerability reporting is always probed, like every
+    other signal, with the per-category toggle governing only whether the
+    resulting table renders.
     """
-    security_updates = await client.automated_security_fixes(org, repo.name)
+    security_updates, pvr = await asyncio.gather(
+        client.automated_security_fixes(org, repo.name),
+        client.private_vulnerability_reporting(org, repo.name),
+    )
     config_text = graph.dependabot_config
     has_config = config_text is not None
     cooldown_missing = (
@@ -215,6 +228,7 @@ async def _posture_for_repo(
         repo=repo,
         dependabot_alerts=dependabot_alerts,
         security_updates=security_updates,
+        private_vulnerability_reporting=pvr,
         cooldown_missing=cooldown_missing,
         has_dependabot_config=has_config,
         latest_release_at=graph.latest_release_at,
@@ -356,7 +370,8 @@ async def collect_org(
     # Extra reporting categories (outside the four-state model): Dependabot
     # configuration posture and release/tag freshness. The Dependabot alerts
     # enablement flag and the release/tag data are reused from the batched
-    # GraphQL prefetch; only the security-updates flag is still a per-repo call.
+    # GraphQL prefetch; the security-updates and private-vulnerability-reporting
+    # flags are still per-repo calls.
     when = report.generated_at
     dependabot_on = {f.repo.name: f.dependabot_enabled for f in facts}
     postures: list[RepoPosture] = []
@@ -384,6 +399,7 @@ async def collect_org(
         exclude=org_cfg.releases_exclude,
     )
     report.mutable_releases = posture.build_mutable_releases_table(postures)
+    report.private_vulnerability_reporting = posture.build_pvr_table(postures)
     # The Dependabot alerts enablement sub-table carries the repositories with
     # Dependabot alerts disabled, so drop them from the Dependabot signal
     # section's nag list to avoid listing the same repositories twice under the

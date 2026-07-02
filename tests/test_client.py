@@ -472,6 +472,34 @@ async def test_automated_security_fixes_error_is_indeterminate(
     assert await client.automated_security_fixes("o", "r") is None
 
 
+@respx.mock
+async def test_private_vulnerability_reporting_enabled(client: GitHubClient) -> None:
+    respx.get(f"{API}/repos/o/r/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(200, json={"enabled": True})
+    )
+    assert await client.private_vulnerability_reporting("o", "r") is True
+
+
+@respx.mock
+async def test_private_vulnerability_reporting_disabled(client: GitHubClient) -> None:
+    respx.get(f"{API}/repos/o/r/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(200, json={"enabled": False})
+    )
+    assert await client.private_vulnerability_reporting("o", "r") is False
+
+
+@respx.mock
+async def test_private_vulnerability_reporting_error_is_indeterminate(
+    client: GitHubClient,
+) -> None:
+    # Any non-200 (e.g. 404 or 422) is treated as indeterminate rather than a
+    # confirmed disabled; 422 here is just a representative error status.
+    respx.get(f"{API}/repos/o/r/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(422, headers={"x-ratelimit-remaining": "4999"})
+    )
+    assert await client.private_vulnerability_reporting("o", "r") is None
+
+
 # --------------------------------------------------------------------------- #
 # Batched per-repo GraphQL prefetch
 # --------------------------------------------------------------------------- #

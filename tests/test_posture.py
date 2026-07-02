@@ -175,6 +175,34 @@ def test_security_updates_table_empty_with_indeterminate() -> None:
     assert (table.fail_count, table.pass_count, table.unknown_count) == (0, 1, 1)
 
 
+def test_pvr_table_lists_disabled_sorted() -> None:
+    postures = [
+        posture.RepoPosture(repo=_repo("zeta"), private_vulnerability_reporting=False),
+        posture.RepoPosture(repo=_repo("alpha"), private_vulnerability_reporting=False),
+        posture.RepoPosture(repo=_repo("on"), private_vulnerability_reporting=True),
+        posture.RepoPosture(repo=_repo("dunno"), private_vulnerability_reporting=None),
+    ]
+    table = posture.build_pvr_table(postures)
+    assert table.title == "Private Vulnerability Reporting"
+    assert table.columns == ("Repository",)
+    assert [r.repo.name for r in table.rows] == ["alpha", "zeta"]
+    # The indeterminate (None) repo counts towards neither pass nor fail.
+    assert (table.fail_count, table.pass_count, table.unknown_count) == (2, 1, 1)
+
+
+def test_pvr_table_all_enabled_summary() -> None:
+    table = posture.build_pvr_table(
+        [
+            posture.RepoPosture(repo=_repo("a"), private_vulnerability_reporting=True),
+            posture.RepoPosture(repo=_repo("b"), private_vulnerability_reporting=True),
+        ]
+    )
+    assert table.rows == []
+    assert (table.fail_count, table.pass_count, table.unknown_count) == (0, 2, 0)
+    lines = report.build_summary(table.summary_counts())
+    assert [(line.kind, line.text) for line in lines] == [("pass", "All Enabled")]
+
+
 def test_cooldown_table_lists_repos_missing_cooldown() -> None:
     postures = [
         posture.RepoPosture(repo=_repo("a"), cooldown_missing=("pip", "npm")),

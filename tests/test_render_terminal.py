@@ -181,6 +181,46 @@ def test_disabled_total_and_names_on_separate_lines() -> None:
     assert "not enabled" not in out  # old lowercase label is gone
 
 
+def test_boolean_feature_section_lists_offenders_inline() -> None:
+    # A single-column feature section (enabled/not enabled) must not draw a
+    # table: the offenders appear inline under the fail line, like a signal
+    # section's "Disabled:" breakdown, labelled with the category's fail wording.
+    org = _org([], count=3)
+    org.private_vulnerability_reporting = report.TableSection(
+        category=category_meta(CategoryKey.PRIVATE_VULNERABILITY_REPORTING),
+        columns=("Repository",),
+        rows=[
+            report.TableRow(repo=_repo("alpha"), cells=()),
+            report.TableRow(repo=_repo("beta"), cells=()),
+        ],
+        pass_count=1,
+        fail_count=2,
+    )
+    out = _render(org)
+    assert "Private Vulnerability Reporting" in out
+    assert "2 Not enabled" in out
+    assert "Not enabled: alpha, beta" in out
+    # No table border characters are drawn for the single-column section.
+    assert "┃" not in out
+    assert "┏" not in out
+
+
+def test_boolean_feature_section_offenders_honour_top_n() -> None:
+    org = _org([], count=5)
+    org.private_vulnerability_reporting = report.TableSection(
+        category=category_meta(CategoryKey.PRIVATE_VULNERABILITY_REPORTING),
+        columns=("Repository",),
+        rows=[report.TableRow(repo=_repo(f"r{i}"), cells=()) for i in range(5)],
+        pass_count=0,
+        fail_count=5,
+    )
+    console = Console(record=True, width=200, no_color=True)
+    terminal.render_org(org, console, top_n=2)
+    out = console.export_text()
+    assert "5 Not enabled" in out  # the count is the true total
+    assert "(+3 more)" in out  # the inline name list is truncated to 2
+
+
 def test_top_n_limits_generic_table_and_name_lists() -> None:
     # top_n must apply consistently: offender table, generic tables, and the
     # Disabled/Excluded name lists all honour the same limit with a tally.

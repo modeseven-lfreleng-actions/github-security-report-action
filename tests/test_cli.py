@@ -103,6 +103,10 @@ def test_org_mode_writes_pages(tmp_path: object) -> None:
     respx.get(url__startswith=f"{API}/repos/o/r/automated-security-fixes").mock(
         return_value=httpx.Response(200, json={"enabled": True, "paused": False})
     )
+    # Private vulnerability reporting is probed per repo, always.
+    respx.get(url__startswith=f"{API}/repos/o/r/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(200, json={"enabled": True})
+    )
 
     out = tmp_path / "site"
     result = cli.invoke(
@@ -163,6 +167,9 @@ def _mock_org_o_r() -> None:
     )
     respx.get(url__startswith=f"{API}/repos/o/r/automated-security-fixes").mock(
         return_value=httpx.Response(200, json={"enabled": True, "paused": False})
+    )
+    respx.get(url__startswith=f"{API}/repos/o/r/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(200, json={"enabled": True})
     )
 
 
@@ -367,6 +374,9 @@ def test_org_mode_top_n_from_config(tmp_path: object) -> None:
     respx.get(
         url__regex=rf"{re.escape(API)}/repos/o/r\d/automated-security-fixes"
     ).mock(return_value=httpx.Response(404))
+    respx.get(
+        url__regex=rf"{re.escape(API)}/repos/o/r\d/private-vulnerability-reporting"
+    ).mock(return_value=httpx.Response(200, json={"enabled": True}))
 
     cfg = (
         '{"report": {"top_n": 1}, '

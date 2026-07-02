@@ -79,8 +79,14 @@ jobs:
           # accepts either). Secret wins when both are present.
           config: "${{ secrets.GSR_CONFIG || vars.GSR_CONFIG }}"
           # Org mode needs a classic PAT (security_events, repo, read:org); the
-          # ephemeral GITHUB_TOKEN cannot read org-wide security data.
-          token: "${{ secrets.SECURITY_REPORT_PAT }}"
+          # ephemeral GITHUB_TOKEN cannot read org-wide security data. The
+          # secret name is project-specific so multiple LF orgs (e.g. ONAP,
+          # O-RAN-SC, OpenDaylight) can each carry their own scoped PAT.
+          token: "${{ secrets.LFRELENG_ACTIONS_REPORT_PAT }}"
+          # Export the PAT under this name so it matches the per-org
+          # "token_env" in GSR_CONFIG; the tool resolves each org's token by
+          # that name, not by the action's default (GITHUB_TOKEN).
+          token_env: "LFRELENG_ACTIONS_REPORT_PAT"
           output_dir: "site"
           pages_url: "${{ steps.pages-url.outputs.url }}"
           slack_channel: "${{ vars.SLACK_CHANNEL_ID }}"
