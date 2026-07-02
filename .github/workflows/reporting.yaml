@@ -35,11 +35,13 @@ jobs:
   build:
     name: "Generate report"
     runs-on: ubuntu-latest
+    # Run this job in a dedicated environment so its execution and any
+    # environment-scoped secrets can be gated by environment protection
+    # rules (satisfies zizmor's secrets-outside-env).
+    environment: 'production'
     permissions:
       contents: read
-      # configure-pages reads (and can enable) the Pages site via the API;
-      # without this the GITHUB_TOKEN cannot perform that Pages operation.
-      pages: write
+      pages: write  # configure-pages reads and can enable the Pages site
     timeout-minutes: 20
     steps:
       - name: "Harden runner"
@@ -125,8 +127,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      pages: write
-      id-token: write
+      pages: write  # Deploy the built site to GitHub Pages
+      id-token: write  # OIDC token for the Pages deployment
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
