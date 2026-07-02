@@ -311,6 +311,21 @@ class TestExtraTables:
         assert "✅ 82 Immutable" in out
         assert "| [img](https://github.com/o/img) | v0.1.0 (latest) |" in out
 
+    def test_org_renders_private_vulnerability_reporting(self) -> None:
+        org = _org([], count=2)
+        org.private_vulnerability_reporting = report.TableSection(
+            category=category_meta(CategoryKey.PRIVATE_VULNERABILITY_REPORTING),
+            columns=("Repository",),
+            rows=[report.TableRow(repo=_repo("z"), cells=())],
+            pass_count=1,
+            fail_count=1,
+        )
+        out = markdown.render_org(org)
+        assert "## Private Vulnerability Reporting\n" in out
+        assert "| [z](https://github.com/o/z) |" in out
+        assert "❌ 1 Not enabled" in out
+        assert "✅ 1 Enabled" in out
+
     def test_org_shows_excluded_repos_per_category(self) -> None:
         # The org-level excluded banner is gone; exclusions now appear in each
         # category's standardised footer.

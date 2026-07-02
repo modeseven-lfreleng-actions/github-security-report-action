@@ -252,6 +252,9 @@ class OrgReport:
     # The Mutable Releases table: repositories whose "Latest" or last-published
     # release is not immutable. None in repo mode / when not collected.
     mutable_releases: TableSection | None = None
+    # The Private Vulnerability Reporting table: repositories where the feature
+    # is not enabled. None in repo mode / when not collected.
+    private_vulnerability_reporting: TableSection | None = None
 
 
 @dataclass

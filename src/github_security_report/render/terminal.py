@@ -214,6 +214,15 @@ def render_org(
         render_table_section(
             org.mutable_releases, console, excluded=org.excluded_repos, top_n=top_n
         )
+    if org.private_vulnerability_reporting is not None and visible(
+        org.private_vulnerability_reporting.category.key
+    ):
+        render_table_section(
+            org.private_vulnerability_reporting,
+            console,
+            excluded=org.excluded_repos,
+            top_n=top_n,
+        )
 
 
 def render_orgs(

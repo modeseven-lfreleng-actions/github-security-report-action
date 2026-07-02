@@ -756,6 +756,30 @@ class GitHubClient:
         await resp.aclose()  # release the connection once the body is read
         return bool(data.get("enabled"))
 
+    async def private_vulnerability_reporting(
+        self, org: str, repo: str
+    ) -> bool | None:
+        """Whether private vulnerability reporting is enabled (None = unknown).
+
+        ``GET .../private-vulnerability-reporting`` returns ``{enabled}`` (200);
+        any other status (e.g. 422) is treated as indeterminate. The endpoint
+        needs only ``Metadata: read``, so it works org-wide with the same token
+        used for the other read probes -- but GitHub exposes no org-wide or
+        GraphQL equivalent, so it is one REST call per repository, gathered
+        alongside the automated-security-fixes probe.
+        """
+        resp = await self._request(
+            "GET",
+            f"{self._api_url}/repos/{org}/{repo}/private-vulnerability-reporting",
+        )
+        status = resp.status_code
+        if status != 200:
+            await resp.aclose()  # unread body would leak a pooled connection
+            return None
+        data = resp.json()
+        await resp.aclose()  # release the connection once the body is read
+        return bool(data.get("enabled"))
+
     async def repo_graph_batch(
         self, org: str, names: list[str]
     ) -> dict[str, RepoGraphData]:

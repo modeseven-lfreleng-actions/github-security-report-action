@@ -239,6 +239,16 @@ def render_org_html(
                 and visible(org.mutable_releases.category.key)
                 else None
             ),
+            private_vulnerability_reporting=(
+                _table_context(
+                    org.private_vulnerability_reporting,
+                    excluded=excluded,
+                    top_n=top_n,
+                )
+                if org.private_vulnerability_reporting
+                and visible(org.private_vulnerability_reporting.category.key)
+                else None
+            ),
             datatables_version=DATATABLES_VERSION,
             datatables_css_sri=DATATABLES_CSS_SRI,
             datatables_js_sri=DATATABLES_JS_SRI,

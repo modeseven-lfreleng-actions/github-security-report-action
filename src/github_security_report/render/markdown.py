@@ -281,6 +281,17 @@ def render_org(
                 org.mutable_releases, level=2, excluded=excluded, top_n=top_n
             )
         )
+    if org.private_vulnerability_reporting is not None and visible(
+        org.private_vulnerability_reporting.category.key
+    ):
+        parts.append(
+            render_table_section(
+                org.private_vulnerability_reporting,
+                level=2,
+                excluded=excluded,
+                top_n=top_n,
+            )
+        )
     return "\n".join(parts).rstrip() + "\n"
 
 

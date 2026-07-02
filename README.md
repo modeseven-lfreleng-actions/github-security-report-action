@@ -43,7 +43,7 @@ back to code-scanning findings. See [`docs/BRIEF.md`](docs/BRIEF.md) and
 [`docs/phase0-findings.md`](docs/phase0-findings.md) for the full design and the
 API research it is built on.
 
-Two further sections report **configuration posture** and **freshness** as plain
+Further sections report **configuration posture** and **freshness** as plain
 tables (org mode):
 
 - **Dependabot** — three tables: repositories with vulnerability **alerts not
@@ -57,6 +57,12 @@ tables (org mode):
   release or tag is older than `release_max_age_days` (default 60; `0` flags
   every eligible repository), so a repository released or tagged within that
   window counts as recently maintained and drops out of the table.
+- **Private Vulnerability Reporting** — repositories where GitHub's private
+  vulnerability reporting feature is **not enabled**, so security researchers
+  cannot privately disclose vulnerabilities. Probed per repository (GitHub
+  exposes no org-wide or GraphQL equivalent) and, like every other category,
+  always collected; hide it with the `private_vulnerability_reporting` render
+  toggle.
 
 ## Operating modes
 
@@ -263,7 +269,8 @@ out of the terminal and Slack while still publishing it to the Markdown and HTML
 Pages output. The valid category keys are: `codeql`, `scorecard`, `zizmor`,
 `dependabot_alerts`, `secret_scanning`, `dependabot_alerts_enabled`,
 `dependabot_updates_enabled`, `dependabot_cooldown`, `releases`,
-`mutable_releases`. Like the other `report` settings, `categories` can be set
+`mutable_releases`, `private_vulnerability_reporting`. Like the other `report`
+settings, `categories` can be set
 globally and overridden per organisation (overrides merge key-by-key, so
 flipping one output leaves the rest untouched). The machine-readable
 `report.json` artifact always contains the complete dataset, regardless of these

@@ -101,6 +101,9 @@ class FakeClient:
     async def automated_security_fixes(self, org: str, repo: str) -> bool | None:
         return True
 
+    async def private_vulnerability_reporting(self, org: str, repo: str) -> bool | None:
+        return True
+
     async def dependabot_config(self, org: str, repo: str) -> tuple[int, str]:
         return 404, ""  # no Dependabot configuration by default
 
@@ -331,6 +334,9 @@ class PostureClient(FakeClient):
         # git-configure-action has Dependabot alerts disabled; the others on.
         self._alerts = {"dependamerge": True, "git-configure-action": False}
         self._security_updates = {"dependamerge": True, "git-configure-action": False}
+        # Private vulnerability reporting: on for dependamerge, off for
+        # git-configure-action (so the PVR table has exactly one offender).
+        self._pvr = {"dependamerge": True, "git-configure-action": False}
         self._configs = {
             "dependamerge": (
                 200,
@@ -343,6 +349,9 @@ class PostureClient(FakeClient):
 
     async def automated_security_fixes(self, org: str, repo: str) -> bool | None:
         return self._security_updates.get(repo, True)
+
+    async def private_vulnerability_reporting(self, org: str, repo: str) -> bool | None:
+        return self._pvr.get(repo, True)
 
     async def dependabot_config(self, org: str, repo: str) -> tuple[int, str]:
         return self._configs.get(repo, (404, ""))
@@ -404,6 +413,15 @@ async def test_collect_org_attaches_dependabot_tables_and_releases() -> None:
     assert report.mutable_releases is not None
     assert report.mutable_releases.title == "Mutable Releases"
     assert report.mutable_releases.rows == []
+
+    # Private Vulnerability Reporting is always collected and attached; the
+    # PostureClient fake reports it disabled for git-configure-action only, so
+    # that repository is the single offender.
+    pvr = report.private_vulnerability_reporting
+    assert pvr is not None
+    assert pvr.title == "Private Vulnerability Reporting"
+    assert [r.repo.name for r in pvr.rows] == ["git-configure-action"]
+    assert (pvr.fail_count, pvr.pass_count) == (1, 1)
 
 
 async def test_collect_org_releases_exclude_and_min_age() -> None:

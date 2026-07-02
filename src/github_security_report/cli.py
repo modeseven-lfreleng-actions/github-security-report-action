@@ -136,6 +136,11 @@ def _org_to_dict(org: OrgReport) -> dict:
         "mutable_releases": (
             _table_to_dict(org.mutable_releases) if org.mutable_releases else None
         ),
+        "private_vulnerability_reporting": (
+            _table_to_dict(org.private_vulnerability_reporting)
+            if org.private_vulnerability_reporting
+            else None
+        ),
     }
 
 

@@ -38,6 +38,7 @@ class CategoryKey(str, Enum):
     DEPENDABOT_COOLDOWN = "dependabot_cooldown"
     RELEASES = "releases"
     MUTABLE_RELEASES = "mutable_releases"
+    PRIVATE_VULNERABILITY_REPORTING = "private_vulnerability_reporting"
 
 
 @dataclass(frozen=True)
@@ -208,6 +209,22 @@ _CATEGORIES: dict[CategoryKey, CategoryMeta] = {
             "Repositories whose latest or last-published release is mutable. "
             "Republish them as immutable releases so a published artifact "
             "cannot change after the fact."
+        ),
+    ),
+    CategoryKey.PRIVATE_VULNERABILITY_REPORTING: CategoryMeta(
+        key=CategoryKey.PRIVATE_VULNERABILITY_REPORTING,
+        title="Private Vulnerability Reporting",
+        pass_label="Enabled",
+        fail_label="Not enabled",
+        url=(
+            "https://docs.github.com/en/code-security/security-advisories/"
+            "working-with-repository-security-advisories/"
+            "configuring-private-vulnerability-reporting-for-a-repository"
+        ),
+        description=(
+            "Repositories with private vulnerability reporting disabled. Enable "
+            "it so security researchers can privately report vulnerabilities "
+            "instead of disclosing them publicly."
         ),
     ),
 }
