@@ -53,7 +53,9 @@ jobs:
 
       - name: "Validated local action: ${{ github.repository }}"
         shell: bash
+        env:
+          REPO: ${{ github.repository }}
         run: |
           # Local action validation
-          echo "Validated local action: ${{ github.repository }} ✅"
+          echo "Validated local action: ${REPO} ✅"
           echo "Validation step summary output" >> "$GITHUB_STEP_SUMMARY"
