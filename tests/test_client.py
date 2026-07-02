@@ -492,8 +492,8 @@ async def test_private_vulnerability_reporting_disabled(client: GitHubClient) ->
 async def test_private_vulnerability_reporting_error_is_indeterminate(
     client: GitHubClient,
 ) -> None:
-    # The endpoint returns 422 (not 404) when it cannot answer; any non-200 is
-    # treated as indeterminate rather than a confirmed disabled.
+    # Any non-200 (e.g. 404 or 422) is treated as indeterminate rather than a
+    # confirmed disabled; 422 here is just a representative error status.
     respx.get(f"{API}/repos/o/r/private-vulnerability-reporting").mock(
         return_value=httpx.Response(422, headers={"x-ratelimit-remaining": "4999"})
     )

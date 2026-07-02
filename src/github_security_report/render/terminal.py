@@ -92,7 +92,7 @@ def _render_summary(
     lines: Sequence[SummaryLine],
     *,
     top_n: int | None,
-    name_labels: dict[str, str] = _NAME_LIST_LABEL,
+    name_labels: dict[str, str] | None = None,
 ) -> None:
     """Print the standardised footer: count lines, then any name lists.
 
@@ -103,6 +103,8 @@ def _render_summary(
     defaults to the disabled/excluded kinds; a boolean feature table passes an
     extended map so its offenders list inline under the fail line too.
     """
+    if name_labels is None:
+        name_labels = _NAME_LIST_LABEL
     for line in lines:
         style = _SUMMARY_STYLE[line.kind]
         console.print(f"  [{style}]{SUMMARY_EMOJI[line.kind]} {line.text}[/{style}]")

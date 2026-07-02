@@ -762,11 +762,13 @@ class GitHubClient:
         """Whether private vulnerability reporting is enabled (None = unknown).
 
         ``GET .../private-vulnerability-reporting`` returns ``{enabled}`` (200);
-        any other status (e.g. 422) is treated as indeterminate. The endpoint
-        needs only ``Metadata: read``, so it works org-wide with the same token
-        used for the other read probes -- but GitHub exposes no org-wide or
-        GraphQL equivalent, so it is one REST call per repository, gathered
-        alongside the automated-security-fixes probe.
+        any other status (e.g. 422) is treated as indeterminate. A classic PAT
+        needs the ``repo`` scope (``public_repo`` suffices for public repos);
+        fine-grained tokens and Apps need only ``Metadata: read``. Org mode
+        already grants ``repo``, so it works with the same token used for the
+        other read probes -- but GitHub exposes no org-wide or GraphQL
+        equivalent, so it is one REST call per repository, gathered alongside
+        the automated-security-fixes probe.
         """
         resp = await self._request(
             "GET",
