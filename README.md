@@ -147,6 +147,8 @@ organisations. Grant these scopes:
     scope: "org"
     config: "${{ secrets.GSR_CONFIG || vars.GSR_CONFIG }}"
     token: "${{ secrets.SECURITY_REPORT_PAT }}"
+    # Must match the per-org "token_env" in your config (below).
+    token_env: "SECURITY_REPORT_PAT"
     output_dir: "site"
     pages_url: "https://lfreleng-actions.github.io/github-security-report-action/"
 ```
@@ -191,7 +193,7 @@ environment-variable name, never embedded.
   "organizations": [
     {
       "name": "lfreleng-actions",
-      "token_env": "GITHUB_TOKEN",
+      "token_env": "SECURITY_REPORT_PAT",
       "exclude": ["actions-template"],
       "releases_exclude": ["internal-only-repo"]
     }
@@ -336,7 +338,7 @@ and the Slack **bot token** is consumed by the workflow, not the CLI.
 | `org` | No | — | Single organisation (shorthand for org mode) |
 | `repo` | No | detected | `owner/name` for repo mode |
 | `token` | No | `${{ github.token }}` | PAT (org mode) or `GITHUB_TOKEN` (repo mode) |
-| `token_env` | No | `GITHUB_TOKEN` | Env var name the tool reads the token from |
+| `token_env` | No | `GITHUB_TOKEN` | Env var name the token is exported under. In org mode it **must match** the per-org `token_env` in your config (e.g. `SECURITY_REPORT_PAT`), otherwise the tool looks up an unset variable and reports no token. |
 | `output_dir` | No | — | Directory for Pages output (org mode) |
 | `pages_url` | No | — | Published Pages URL (used in the Slack link) |
 | `slack_channel` | No | — | Slack channel ID; overrides the config `slack.channel` (e.g. the `SLACK_CHANNEL_ID` variable) |
