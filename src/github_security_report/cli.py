@@ -17,7 +17,7 @@ import logging
 import os
 import re
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import NoReturn
@@ -26,6 +26,7 @@ import typer
 from rich.console import Console
 
 from github_security_report import __version__, collect, config, gitctx, runner
+from github_security_report import remediate as remediate_mod
 from github_security_report.categories import CategoryKey
 from github_security_report.client import GitHubClient, NetworkError
 from github_security_report.config import Config, OrgConfig, ReportConfig
@@ -423,6 +424,43 @@ async def _run_repo(owner: str, repo_name: str, *, token_env: str, console: Cons
     return 0
 
 
+async def _run_remediate(
+    cfg: Config,
+    *,
+    console: Console,
+    token: str,
+    categories: Sequence[CategoryKey],
+    apply: bool,
+) -> int:
+    """Collect each org's posture and enable (or preview enabling) features.
+
+    A single write-capable token drives both the read (collection) and the
+    writes for every configured org, so the per-org read ``token_env`` in the
+    config is intentionally bypassed. Returns 1 when any enable failed, else 0.
+    """
+    now = dt.datetime.now(dt.timezone.utc)
+    failures = 0
+    async with GitHubClient(token) as client:
+        for org_cfg in cfg.organizations:
+            report = await collect.collect_org(
+                client, org_cfg, org_cfg.report, generated_at=now
+            )
+            results = await remediate_mod.remediate_org(
+                client, report, categories=categories, apply=apply
+            )
+            # Honour the org's configured terminal offender limit, the same
+            # cap the report's CLI output uses, so large orgs stay readable.
+            term_render.render_remediation(
+                report.org,
+                results,
+                console,
+                apply=apply,
+                top_n=org_cfg.report.cli_top_n,
+            )
+            failures += sum(result.failures for result in results)
+    return 1 if failures else 0
+
+
 def _repo_outputs(signals: list[RepoSignal], fail_threshold: str) -> dict[str, str]:
     outputs = {s.signal.value + "_open": str(s.counts.total) for s in signals}
     outputs["failed"] = "true" if runner.should_fail(signals, fail_threshold) else "false"
@@ -537,6 +575,76 @@ def report(
             )
         except NetworkError as exc:
             _abort_network(console, exc)
+    raise typer.Exit(code)
+
+
+@app.command()
+def remediate(
+    config_file: str | None = typer.Option(None, "--config", "-c", help="Path to a JSON config file."),
+    config_data: str | None = typer.Option(None, "--config-data", help="Raw or base64 JSON config (vars/secrets)."),
+    org: str | None = typer.Option(None, "--org", help="Single organisation (shorthand for org mode)."),
+    scope: str = typer.Option("org", "--scope", help="Only 'org' is supported; remediation is organisation-scoped."),
+    category: list[str] | None = typer.Option(None, "--category", help="Remediable category to act on (repeatable; default: all). One of: codeql, secret_scanning, dependabot_alerts_enabled, dependabot_updates_enabled, private_vulnerability_reporting."),
+    token_env: str = typer.Option("GITHUB_TOKEN", "--token-env", help="Env var holding a WRITE-capable org-admin PAT. Used for both reading posture and enabling features across every configured org."),
+    apply: bool = typer.Option(False, "--apply", help="Perform the writes. Without this flag remediate only previews (dry run)."),
+    no_color: bool = typer.Option(False, "--no-color", help="Disable coloured output."),
+) -> None:
+    """Enable security features on repositories that lack them.
+
+    Runs the same collection the report uses, then switches on each selected
+    remediable feature wherever a repository has it confirmed off. Dry run by
+    default: pass --apply to make changes. Requires a write-capable token
+    (org admin), distinct from the read-only reporting PAT.
+    """
+    plain = no_color or bool(os.environ.get("CI")) or not sys.stdout.isatty()
+    console = Console(no_color=plain, highlight=False)
+
+    if scope != "org":
+        console.print("[red]remediate supports only --scope org[/red]")
+        raise typer.Exit(2)
+
+    keys, unknown = remediate_mod.parse_categories(category or [])
+    if unknown:
+        valid = ", ".join(key.value for key in remediate_mod.REMEDIABLE)
+        # markup=False: the user-supplied --category values are printed
+        # literally, so bracketed input cannot be interpreted as Rich markup.
+        console.print(
+            f"Unknown --category: {', '.join(unknown)}. Valid values: {valid}",
+            style="red",
+            markup=False,
+        )
+        raise typer.Exit(2)
+    categories = keys or list(remediate_mod.REMEDIABLE)
+
+    cfg = _load_config(config_file, config_data, org, token_env, console=console)
+    if cfg is None:
+        console.print(
+            "[red]No configuration: provide --config, --config-data or --org.[/red]"
+        )
+        raise typer.Exit(2)
+
+    token = os.environ.get(token_env, "").strip()
+    if not token:
+        # markup=False guards the user-supplied --token-env value.
+        console.print(
+            f"No token in ${token_env} (a write-capable org-admin PAT is required).",
+            style="red",
+            markup=False,
+        )
+        raise typer.Exit(2)
+
+    try:
+        code = asyncio.run(
+            _run_remediate(
+                cfg,
+                console=console,
+                token=token,
+                categories=categories,
+                apply=apply,
+            )
+        )
+    except NetworkError as exc:
+        _abort_network(console, exc)
     raise typer.Exit(code)
 
 

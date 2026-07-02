@@ -14,11 +14,13 @@ from collections.abc import Callable, Sequence
 from dataclasses import replace
 
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from github_security_report.categories import CategoryKey
 from github_security_report.models import Repo, RepoSignal, SignalType
 from github_security_report.render import markdown
+from github_security_report.remediate import CategoryRemediation
 from github_security_report.report import (
     SUMMARY_EMOJI,
     OrgReport,
@@ -260,3 +262,76 @@ def render_orgs(
 ) -> None:
     for org in orgs:
         render_org(org, console, top_n=top_n)
+
+
+def render_remediation(
+    org: str,
+    results: Sequence[CategoryRemediation],
+    console: Console,
+    *,
+    apply: bool,
+    top_n: int | None = None,
+) -> None:
+    """Render a remediation run: one block per category, with a trailing summary.
+
+    Mirrors the report's inline style rather than a table: each category names
+    the repositories it would enable / enabled (honouring ``top_n``) and lists
+    any failures one per line with their diagnostic. Dry run prints a leading
+    notice; apply mode prints none (the writes finish before this renders), and
+    a trailing summary totals the work across categories.
+    """
+    console.rule(f"[bold]Remediation: {escape(org)}[/bold]")
+    # In apply mode the writes have already happened by the time this renders,
+    # so a pre-amble banner would be misleading; only the dry-run notice (shown
+    # before nothing is changed) is useful.
+    if not apply:
+        console.print(
+            "[bold yellow]DRY RUN[/bold yellow] — no changes made. Re-run with "
+            "[bold]--apply[/bold] to enable features.\n"
+        )
+
+    planned = 0
+    changed = 0
+    failed = 0
+    for result in results:
+        console.print(f"[bold]{result.category.title}[/bold]")
+        # Classify by run mode and each outcome's own failed flag rather than
+        # by the action string, so the renderer owns no copy of the action
+        # vocabulary defined in remediate.py.
+        failures = [o for o in result.outcomes if o.failed]
+        succeeded = [o for o in result.outcomes if not o.failed]
+        would = succeeded if not apply else []
+        enabled = succeeded if apply else []
+        if not result.outcomes:
+            console.print("  [green]Nothing to remediate[/green]")
+        if would:
+            names = _truncated_names([o.name for o in would], top_n)
+            console.print(
+                f"  [yellow]→[/yellow] {len(would)} would enable: {escape(names)}"
+            )
+        if enabled:
+            names = _truncated_names([o.name for o in enabled], top_n)
+            console.print(
+                f"  [green]{SUMMARY_EMOJI['pass']}[/green] {len(enabled)} enabled: "
+                f"{escape(names)}"
+            )
+        for outcome in failures:
+            detail = f": {escape(outcome.note)}" if outcome.note else ""
+            console.print(
+                f"  [red]{SUMMARY_EMOJI['fail']}[/red] {escape(outcome.name)} "
+                f"failed{detail}"
+            )
+        planned += len(would)
+        changed += len(enabled)
+        failed += len(failures)
+        console.print()
+
+    if apply:
+        console.print(
+            f"[bold]Summary:[/bold] {changed} enabled, {failed} failed."
+        )
+    else:
+        console.print(
+            f"[bold]Summary:[/bold] {planned} to enable (dry run). Re-run with "
+            "[bold]--apply[/bold] to make changes."
+        )

@@ -398,3 +398,123 @@ def test_org_mode_top_n_from_config(tmp_path: object) -> None:
     # r1 sorts ahead of r2 on the tie, so top_n=1 keeps only r1 in the fence.
     assert "r1" in text
     assert "r2" not in text
+
+
+def _mock_offender_org() -> None:
+    """Register org ``o`` / repo ``r`` with every remediable feature OFF.
+
+    The single repo is an offender in all five remediable categories: CodeQL
+    (no analyses), secret scanning (404), Dependabot alerts (GraphQL reports
+    disabled), Dependabot security updates (automated-security-fixes off) and
+    private vulnerability reporting (off). Read routes only -- write routes are
+    added per test so a dry run can assert none were called.
+    """
+    respx.get(url__startswith=f"{API}/orgs/o/repos").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "name": "r",
+                    "full_name": "o/r",
+                    "html_url": "https://github.com/o/r",
+                    "size": 10,
+                }
+            ],
+        )
+    )
+    for kind in ("code-scanning", "dependabot", "secret-scanning"):
+        respx.get(url__startswith=f"{API}/orgs/o/{kind}/alerts").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+    respx.get(url__startswith=f"{API}/orgs/o/rulesets").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    # No CodeQL analyses -> CodeQL NAG (confirmed off).
+    respx.get(url__startswith=f"{API}/repos/o/r/code-scanning/analyses").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    # 404 on secret scanning alerts -> secret scanning NAG (confirmed off).
+    respx.get(url__startswith=f"{API}/repos/o/r/secret-scanning/alerts").mock(
+        return_value=httpx.Response(404)
+    )
+
+    def _graphql_off(request: httpx.Request) -> httpx.Response:
+        variables = json.loads(request.content).get("variables", {})
+        data: dict[str, object] = {}
+        for key in variables:
+            if not key.startswith("n"):
+                continue
+            idx = key[1:]
+            data[f"r{idx}"] = {
+                "hasVulnerabilityAlertsEnabled": False,
+                "dependabotConfig": None,
+                "tags": {"nodes": []},
+                "releases": {"nodes": []},
+            }
+        return httpx.Response(200, json={"data": data})
+
+    respx.post(f"{API}/graphql").mock(side_effect=_graphql_off)
+    respx.get(url__startswith=f"{SCORECARD}/projects/github.com/o/r").mock(
+        return_value=httpx.Response(404)
+    )
+    respx.get(url__startswith=f"{API}/repos/o/r/automated-security-fixes").mock(
+        return_value=httpx.Response(200, json={"enabled": False, "paused": False})
+    )
+    respx.get(url__startswith=f"{API}/repos/o/r/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(200, json={"enabled": False})
+    )
+
+
+@respx.mock
+def test_remediate_dry_run_makes_no_writes() -> None:
+    _mock_offender_org()
+    # Register write routes so we can assert they are never called in a dry run.
+    codeql = respx.patch(f"{API}/repos/o/r/code-scanning/default-setup").mock(
+        return_value=httpx.Response(202, json={})
+    )
+    secret = respx.patch(f"{API}/repos/o/r").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    alerts = respx.put(url__startswith=f"{API}/repos/o/r/vulnerability-alerts").mock(
+        return_value=httpx.Response(204)
+    )
+    fixes = respx.put(url__startswith=f"{API}/repos/o/r/automated-security-fixes").mock(
+        return_value=httpx.Response(204)
+    )
+    pvr = respx.put(
+        url__startswith=f"{API}/repos/o/r/private-vulnerability-reporting"
+    ).mock(return_value=httpx.Response(204))
+
+    result = cli.invoke(app, ["remediate", "--org", "o", "--no-color"])
+    assert result.exit_code == 0, result.stdout
+    assert "DRY RUN" in result.stdout
+    assert "would enable" in result.stdout
+    for route in (codeql, secret, alerts, fixes, pvr):
+        assert route.call_count == 0, result.stdout
+
+
+@respx.mock
+def test_remediate_apply_enables_every_category() -> None:
+    _mock_offender_org()
+    codeql = respx.patch(f"{API}/repos/o/r/code-scanning/default-setup").mock(
+        return_value=httpx.Response(202, json={})
+    )
+    secret = respx.patch(f"{API}/repos/o/r").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    alerts = respx.put(url__startswith=f"{API}/repos/o/r/vulnerability-alerts").mock(
+        return_value=httpx.Response(204)
+    )
+    fixes = respx.put(url__startswith=f"{API}/repos/o/r/automated-security-fixes").mock(
+        return_value=httpx.Response(204)
+    )
+    pvr = respx.put(
+        url__startswith=f"{API}/repos/o/r/private-vulnerability-reporting"
+    ).mock(return_value=httpx.Response(204))
+
+    result = cli.invoke(app, ["remediate", "--org", "o", "--apply", "--no-color"])
+    assert result.exit_code == 0, result.stdout
+    assert "DRY RUN" not in result.stdout
+    assert "enabled: r" in result.stdout
+    for route in (codeql, secret, alerts, fixes, pvr):
+        assert route.called, result.stdout
