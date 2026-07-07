@@ -83,3 +83,17 @@ them to drift.
 - The Dependabot enablement table is titled **"Dependabot: Alerts Enabled"** to
   disambiguate it from the **"Dependabot: Security Alerts"** open-alert signal it
   nests beneath.
+
+## Amendment (2026-07-07)
+
+Point 6 originally normalised SARIF `note`/`none` findings to the
+`informational` rung. This under-stated the estate's zizmor posture:
+zizmor's SARIF encoder emits both its Low and Informational findings at
+level `note`, and the organisation scan pipeline runs zizmor with
+`--min-severity low`, so informational findings never reach the uploaded
+SARIF -- every `note` code-scanning alert is a genuine Low finding. The
+ruleset-enforced PR gate blocks on note-and-above, so the report showed
+repositories as clean that the gate was failing. SARIF `note` now
+normalises to `low` (only `none` and unclassifiable alerts land at
+`informational`); with Zizmor's `low` cutoff, any zizmor finding makes a
+repository an offender, matching the gate.

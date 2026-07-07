@@ -37,8 +37,9 @@ class TestSarifFallback:
     def test_sarif_levels(self) -> None:
         assert severity.from_sarif_level("error") is Severity.HIGH
         assert severity.from_sarif_level("warning") is Severity.MEDIUM
-        # SARIF has no distinct "low"; note/none are advisory -> informational.
-        assert severity.from_sarif_level("note") is Severity.INFORMATIONAL
+        # zizmor emits its Low findings at SARIF level note; the scan
+        # pipeline's low floor keeps informational out of the SARIF.
+        assert severity.from_sarif_level("note") is Severity.LOW
         assert severity.from_sarif_level("none") is Severity.INFORMATIONAL
 
     def test_unknown(self) -> None:

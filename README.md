@@ -291,8 +291,11 @@ The severity-ranked signals (CodeQL, Scorecard, Zizmor, Dependabot alerts) use a
 repository is flagged as an offender only when it carries a finding **at or
 above** the cutoff; findings below it fold into the clean count. Severities run
 (lowest to highest) `informational`, `low`, `medium`, `high`, `critical` —
-`informational` being the new sub-low rung that SARIF `note`/`none` findings
-(the bulk of a tool like Zizmor) normalise to.
+`informational` being the sub-low rung for SARIF `none` findings and
+unclassifiable alerts. Zizmor's SARIF `note` findings normalise to `low`
+(zizmor emits its Low findings at `note`, and the organisation scan pipeline's
+`--min-severity low` floor keeps informational findings out of the uploaded
+SARIF), matching the ruleset-enforced PR gate that blocks on note-and-above.
 
 The global default cutoff is `medium`, so `low` and `informational` findings
 pass. Zizmor defaults to `low` (only `informational` passes). Override the

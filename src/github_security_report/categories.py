@@ -105,8 +105,9 @@ _CATEGORIES: dict[CategoryKey, CategoryMeta] = {
             "Zizmor static analysis of GitHub Actions workflows, ranked "
             "worst-first by severity."
         ),
-        # Zizmor's advisory "note" findings normalise to informational; only
-        # those pass. A low-or-higher zizmor finding is treated as a failure.
+        # zizmor emits its Low findings at SARIF level "note", which
+        # normalises to LOW (see severity.py), so any zizmor finding fails --
+        # matching the ruleset-enforced PR gate that blocks on note-and-above.
         fail_severity=Severity.LOW,
     ),
     CategoryKey.DEPENDABOT_ALERTS: CategoryMeta(

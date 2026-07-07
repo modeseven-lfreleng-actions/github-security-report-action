@@ -400,9 +400,11 @@ class TestFailSeverityCutoff:
         )
         assert _by_signal(facts)[SignalType.CODEQL].state is RepoState.OFFENDER
 
-    def test_zizmor_note_only_is_clean(self) -> None:
-        # Zizmor's cutoff is LOW, and SARIF note normalises to informational,
-        # so a note-only repository passes.
+    def test_zizmor_note_only_is_offender(self) -> None:
+        # zizmor emits Low findings at SARIF level note (and the scan
+        # pipeline's --min-severity low floor keeps informational findings out
+        # of the SARIF), so note normalises to LOW -- at the LOW cutoff, a
+        # note-only repository fails, matching the PR gate.
         facts = RepoFacts(
             repo=_repo(),
             code_scanning_status=200,
@@ -410,8 +412,8 @@ class TestFailSeverityCutoff:
             code_scanning_alerts=[_cs_alert("zizmor", None, "note")],
         )
         sig = _by_signal(facts)[SignalType.ZIZMOR]
-        assert sig.state is RepoState.CLEAN
-        assert sig.counts.informational == 1
+        assert sig.state is RepoState.OFFENDER
+        assert sig.counts.low == 1
 
     def test_zizmor_warning_is_offender(self) -> None:
         # warning -> medium, at/above the LOW cutoff -> offender.

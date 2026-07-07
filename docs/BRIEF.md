@@ -165,9 +165,11 @@ reported in **two separate columns** as a human "last release / last tag" age.
   Each report declares `(value, sort_direction)`.
 - **Severity-weighted where available; fall back to flat count** otherwise.
 - **Severity scale (lowest to highest):** informational → low → medium → high →
-  critical. `informational` is the sub-low rung that SARIF `note`/`none`
-  findings (the bulk of a tool like zizmor) normalise to, so a category can
-  treat them as non-actionable.
+  critical. `informational` is the sub-low rung for SARIF `none` findings and
+  unclassifiable alerts, so a category can treat them as non-actionable. SARIF
+  `note` normalises to `low`: zizmor emits its Low findings at `note`, and the
+  scan pipeline's `--min-severity low` floor keeps informational findings out
+  of the uploaded SARIF, so a `note` alert is a genuine Low finding.
 - **Pass/fail cutoff (`fail_severity`):** each severity-ranked signal carries a
   cutoff in its category metadata. A repository is an offender only when it has
   a finding **at or above** the cutoff; sub-threshold findings fold into the
@@ -176,10 +178,10 @@ reported in **two separate columns** as a human "last release / last tag" age.
   overridable per category via `report.categories.<key>.fail_severity`.
 - When severity data exists, show **separate columns** (critical / high /
   medium / low). The sub-low **informational** column is shown **only when the
-  displayed offenders actually carry informational (SARIF `note`) findings** —
-  e.g. zizmor — so severity tables without such data (CodeQL, most Dependabot
-  alerts) are not padded with an all-zero column. When shown, its counts feed
-  the trailing `Total` column, so the visible severity columns sum vertically.
+  displayed offenders actually carry informational findings** so severity
+  tables without such data (CodeQL, most Dependabot alerts) are not padded
+  with an all-zero column. When shown, its counts feed the trailing `Total`
+  column, so the visible severity columns sum vertically.
 - **Row sort:** hierarchical, worst-first — critical desc → high desc →
   medium desc → low desc. Scorecard sorts by score **ascending** (lowest =
   worst = top).
