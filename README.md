@@ -291,8 +291,11 @@ The severity-ranked signals (CodeQL, Scorecard, Zizmor, Dependabot alerts) use a
 repository is flagged as an offender only when it carries a finding **at or
 above** the cutoff; findings below it fold into the clean count. Severities run
 (lowest to highest) `informational`, `low`, `medium`, `high`, `critical` —
-`informational` being the new sub-low rung that SARIF `note`/`none` findings
-(the bulk of a tool like Zizmor) normalise to.
+`informational` being the sub-low rung for SARIF `none` findings and
+unclassifiable alerts. Zizmor's SARIF `note` findings normalise to `low`
+(zizmor emits its Low findings at `note`, and the organisation scan pipeline's
+`--min-severity low` floor keeps informational findings out of the uploaded
+SARIF), matching the ruleset-enforced PR gate that blocks on note-and-above.
 
 The global default cutoff is `medium`, so `low` and `informational` findings
 pass. Zizmor defaults to `low` (only `informational` passes). Override the
@@ -382,7 +385,56 @@ uvx github-security-report report
 uvx github-security-report report --org lfreleng-actions
 ```
 
+## Remediation
+
+The `remediate` subcommand is the in-tool counterpart to the report: it runs the
+same collection, then switches on each selected security feature wherever a
+repository has it **confirmed off**. Only the offenders the report already
+surfaces are acted on — repositories whose state could not be read are counted
+as *unknown* and are never written to, so remediation never blind-writes.
+
+It is **dry run by default** (these are privileged writes); pass `--apply` to
+make changes. A single **write-capable** org-admin token (from `--token-env`,
+default `GITHUB_TOKEN`) drives both the read and the writes across every
+configured organisation, so it bypasses the per-org read-only `token_env` in the
+config.
+
+```bash
+# An org-admin token is required: a classic PAT with the `repo` scope
+# (administers repository security settings) plus `read:org` to enumerate repos.
+source ~/.secrets.github.classic.god   # exports $GITHUB_TOKEN
+
+# Dry run (default): preview every change, touch nothing.
+uvx github-security-report remediate --org lfreleng-actions
+
+# Apply: enable every remediable feature that is off, across all configured orgs.
+uvx github-security-report remediate \
+  --config ~/.config/github-security-report/config.json --apply
+
+# Limit to specific categories (repeatable).
+uvx github-security-report remediate --org lfreleng-actions \
+  --category codeql --category private_vulnerability_reporting --apply
+```
+
+The remediable categories are the simple on/off features with a documented
+enablement endpoint:
+
+| `--category` | Enables |
+|---|---|
+| `codeql` | CodeQL default setup (provisioned asynchronously) |
+| `secret_scanning` | Secret scanning |
+| `dependabot_alerts_enabled` | Dependabot vulnerability alerts |
+| `dependabot_updates_enabled` | Dependabot security updates (plus alerts) |
+| `private_vulnerability_reporting` | Private vulnerability reporting |
+
+Qualitative findings (Scorecard, zizmor, open Dependabot alerts, cooldown,
+release freshness/mutability) are reported but not auto-remediated. Remediation
+is organisation-scoped (`--scope org`, the default and only supported scope).
+
 ## Bulk Remediation Scripts
+
+The standalone scripts below predate the `remediate` subcommand and remain for
+ad-hoc, single-feature runs. For most workflows, prefer `remediate` above.
 
 The report ends with **nag lists** — repositories where a supported feature is
 switched off. Where GitHub exposes the relevant toggle through its REST API,
@@ -405,7 +457,8 @@ the current state of each repository, enables the feature where it is off, and
 verifies the result.
 
 ```bash
-# An org-admin token is required (classic PAT with repo admin / admin:org).
+# An org-admin token is required: a classic PAT with the `repo` scope
+# (administers repository security settings) plus `read:org` to enumerate repos.
 source ~/.secrets.github.classic.god   # exports $GITHUB_TOKEN
 
 # Dry run (default): preview every change, touch nothing.

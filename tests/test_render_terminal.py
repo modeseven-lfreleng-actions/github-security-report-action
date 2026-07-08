@@ -8,7 +8,7 @@ import datetime as dt
 
 from rich.console import Console
 
-from github_security_report import report
+from github_security_report import remediate, report
 from github_security_report.categories import CategoryKey, category_meta
 from github_security_report.models import (
     Repo,
@@ -338,3 +338,88 @@ def test_show_predicate_hides_disabled_categories() -> None:
     assert "Mutable Releases" not in out
     # A category left enabled by the predicate still renders.
     assert "Secret scanning" in out
+
+
+# --------------------------------------------------------------------------- #
+# Remediation rendering
+# --------------------------------------------------------------------------- #
+def _remediation(
+    key: CategoryKey, outcomes: list[tuple[str, str, str]]
+) -> remediate.CategoryRemediation:
+    return remediate.CategoryRemediation(
+        category=category_meta(key),
+        outcomes=tuple(
+            remediate.RepoOutcome(name, action, note) for name, action, note in outcomes
+        ),
+    )
+
+
+def test_render_remediation_dry_run_previews_without_apply_banner() -> None:
+    results = [
+        _remediation(
+            CategoryKey.CODEQL,
+            [("a", "would enable", ""), ("b", "would enable", "")],
+        ),
+        _remediation(CategoryKey.SECRET_SCANNING, []),
+    ]
+    console = Console(record=True, width=120, no_color=True)
+    terminal.render_remediation("lfreleng-actions", results, console, apply=False)
+    out = console.export_text()
+    assert "Remediation: lfreleng-actions" in out
+    assert "DRY RUN" in out
+    assert "2 would enable: a, b" in out
+    assert "Nothing to remediate" in out
+    assert "2 to enable (dry run)" in out
+    assert "APPLYING CHANGES" not in out
+
+
+def test_render_remediation_apply_reports_enabled_and_failures() -> None:
+    results = [
+        _remediation(
+            CategoryKey.PRIVATE_VULNERABILITY_REPORTING,
+            [
+                ("ok1", "enabled", ""),
+                ("ok2", "enabled", ""),
+                ("bad", "FAILED", "403 Forbidden"),
+            ],
+        ),
+    ]
+    console = Console(record=True, width=120, no_color=True)
+    terminal.render_remediation("o", results, console, apply=True)
+    out = console.export_text()
+    # Apply mode prints no pre-amble banner (the writes are already done).
+    assert "APPLYING CHANGES" not in out
+    assert "DRY RUN" not in out
+    assert "2 enabled: ok1, ok2" in out
+    assert "bad failed: 403 Forbidden" in out
+    assert "Summary:" in out and "2 enabled, 1 failed" in out
+
+
+def test_render_remediation_honours_top_n() -> None:
+    results = [
+        _remediation(
+            CategoryKey.CODEQL,
+            [(f"r{i}", "would enable", "") for i in range(5)],
+        ),
+    ]
+    console = Console(record=True, width=200, no_color=True)
+    terminal.render_remediation("o", results, console, apply=False, top_n=2)
+    out = console.export_text()
+    assert "5 would enable" in out  # the count is the true total
+    assert "(+3 more)" in out  # the inline name list is truncated to 2
+
+
+def test_render_remediation_escapes_bracketed_failure_notes() -> None:
+    # A note such as "[Errno 8]" must render literally, not be swallowed by Rich
+    # as markup (which would drop the bracketed span from the output).
+    results = [
+        _remediation(
+            CategoryKey.CODEQL,
+            [("bad", "FAILED", "422 [Errno 8] nodename nor servname")],
+        ),
+    ]
+    console = Console(record=True, width=200, no_color=True)
+    terminal.render_remediation("o", results, console, apply=True)
+    out = console.export_text()
+    assert "[Errno 8]" in out
+    assert "bad failed: 422 [Errno 8] nodename nor servname" in out

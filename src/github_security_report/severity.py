@@ -12,10 +12,17 @@ in the code-scanning feed:
 
 To present a single, uniform set of severity columns across every table (as the
 design requires), the SARIF level is normalised onto the security scale when no
-security severity is present: error -> high, warning -> medium, and note/none ->
-informational (the sub-low rung, so a category's ``fail_severity`` cutoff can
-treat these advisory findings as non-actionable). Dependabot's
-``security_advisory.severity`` maps directly.
+security severity is present: error -> high, warning -> medium, note -> low,
+and none -> informational. Dependabot's ``security_advisory.severity`` maps
+directly.
+
+The ``note`` mapping mirrors zizmor's own SARIF encoder, which emits both its
+Low and Informational findings at SARIF level ``note`` (Medium -> ``warning``,
+High -> ``error``). The organisation scan pipeline runs zizmor with
+``--min-severity low``, so informational findings never reach the uploaded
+SARIF: every ``note`` alert in code scanning is a genuine Low finding, and the
+ruleset-enforced PR gate blocks on it. Mapping ``note`` below LOW would
+(and previously did) under-state the estate's posture relative to that gate.
 """
 
 from __future__ import annotations
@@ -26,9 +33,9 @@ from enum import IntEnum
 class Severity(IntEnum):
     """Ordered severity. Higher value == more severe (worst-first sorting).
 
-    ``INFORMATIONAL`` is the lowest rung (below ``LOW``): SARIF ``note``/``none``
-    findings -- the bulk of a tool like zizmor -- normalise here, so a category
-    can choose to treat them as non-actionable via its ``fail_severity`` cutoff.
+    ``INFORMATIONAL`` is the lowest rung (below ``LOW``): SARIF ``none``
+    findings and unclassifiable alerts normalise here, so a category can
+    choose to treat them as non-actionable via its ``fail_severity`` cutoff.
     """
 
     INFORMATIONAL = 0
@@ -51,14 +58,16 @@ _SECURITY_NAMES: dict[str, Severity] = {
     "low": Severity.LOW,
 }
 
-# SARIF level -> security scale, used only as a fallback (zizmor). The SARIF
-# vocabulary has no distinct "low": ``note`` (and the rare ``none``) carry the
-# advisory, non-actionable findings, so they normalise to INFORMATIONAL -- below
-# LOW -- letting a category's fail_severity cutoff exclude them.
+# SARIF level -> security scale, used only as a fallback (zizmor). zizmor's
+# SARIF encoder emits Low AND Informational findings as ``note``, but the scan
+# pipeline's --min-severity low floor keeps informational findings out of the
+# SARIF entirely, so a ``note`` alert is a genuine Low finding (matching the
+# ruleset-enforced PR gate, which blocks on note-and-above). The rare ``none``
+# level stays at INFORMATIONAL.
 _SARIF_LEVEL_NAMES: dict[str, Severity] = {
     "error": Severity.HIGH,
     "warning": Severity.MEDIUM,
-    "note": Severity.INFORMATIONAL,
+    "note": Severity.LOW,
     "none": Severity.INFORMATIONAL,
 }
 

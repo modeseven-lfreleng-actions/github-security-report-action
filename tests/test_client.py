@@ -501,6 +501,143 @@ async def test_private_vulnerability_reporting_error_is_indeterminate(
 
 
 # --------------------------------------------------------------------------- #
+# Remediation writes
+# --------------------------------------------------------------------------- #
+@respx.mock
+async def test_enable_dependabot_alerts_ok(client: GitHubClient) -> None:
+    route = respx.put(f"{API}/repos/o/r/vulnerability-alerts").mock(
+        return_value=httpx.Response(204)
+    )
+    ok, note = await client.enable_dependabot_alerts("o", "r")
+    assert route.called
+    assert ok is True
+    assert note == ""
+
+
+@respx.mock
+async def test_enable_dependabot_alerts_failure_carries_note(
+    client: GitHubClient,
+) -> None:
+    respx.put(f"{API}/repos/o/r/vulnerability-alerts").mock(
+        return_value=httpx.Response(403, json={"message": "Forbidden"})
+    )
+    ok, note = await client.enable_dependabot_alerts("o", "r")
+    assert ok is False
+    assert note.startswith("403")
+    assert "Forbidden" in note
+
+
+@respx.mock
+async def test_enable_dependabot_security_updates_enables_alerts_first(
+    client: GitHubClient,
+) -> None:
+    alerts = respx.put(f"{API}/repos/o/r/vulnerability-alerts").mock(
+        return_value=httpx.Response(204)
+    )
+    fixes = respx.put(f"{API}/repos/o/r/automated-security-fixes").mock(
+        return_value=httpx.Response(204)
+    )
+    ok, note = await client.enable_dependabot_security_updates("o", "r")
+    assert alerts.called and fixes.called
+    assert ok is True
+    assert note == ""
+
+
+@respx.mock
+async def test_enable_dependabot_security_updates_aborts_when_alerts_fail(
+    client: GitHubClient,
+) -> None:
+    respx.put(f"{API}/repos/o/r/vulnerability-alerts").mock(
+        return_value=httpx.Response(403, json={"message": "nope"})
+    )
+    fixes = respx.put(f"{API}/repos/o/r/automated-security-fixes").mock(
+        return_value=httpx.Response(204)
+    )
+    ok, note = await client.enable_dependabot_security_updates("o", "r")
+    assert ok is False
+    # The prerequisite failed, so the security-updates write is never attempted.
+    assert not fixes.called
+    assert note.startswith("vulnerability-alerts -> 403")
+
+
+@respx.mock
+async def test_enable_private_vulnerability_reporting_ok(
+    client: GitHubClient,
+) -> None:
+    route = respx.put(f"{API}/repos/o/r/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(204)
+    )
+    ok, note = await client.enable_private_vulnerability_reporting("o", "r")
+    assert route.called
+    assert ok is True
+    assert note == ""
+
+
+@respx.mock
+async def test_enable_codeql_default_setup_accepts_202(
+    client: GitHubClient,
+) -> None:
+    route = respx.patch(f"{API}/repos/o/r/code-scanning/default-setup").mock(
+        return_value=httpx.Response(202, json={"run_id": 1})
+    )
+    ok, note = await client.enable_codeql_default_setup("o", "r")
+    assert route.called
+    assert ok is True
+    assert note == "accepted (async)"
+
+
+@respx.mock
+async def test_enable_codeql_default_setup_accepts_200(
+    client: GitHubClient,
+) -> None:
+    # A synchronous update returns 200 OK; treat it as success with no
+    # async hint.
+    route = respx.patch(f"{API}/repos/o/r/code-scanning/default-setup").mock(
+        return_value=httpx.Response(200, json={"state": "configured"})
+    )
+    ok, note = await client.enable_codeql_default_setup("o", "r")
+    assert route.called
+    assert ok is True
+    assert note == ""
+
+
+@respx.mock
+async def test_enable_codeql_default_setup_reports_unsupported(
+    client: GitHubClient,
+) -> None:
+    # A repo with no CodeQL-supported languages returns a 4xx; non-fatal.
+    respx.patch(f"{API}/repos/o/r/code-scanning/default-setup").mock(
+        return_value=httpx.Response(422, json={"message": "no languages"})
+    )
+    ok, note = await client.enable_codeql_default_setup("o", "r")
+    assert ok is False
+    assert note.startswith("422")
+
+
+@respx.mock
+async def test_enable_secret_scanning_ok(client: GitHubClient) -> None:
+    route = respx.patch(f"{API}/repos/o/r").mock(
+        return_value=httpx.Response(200, json={"name": "r"})
+    )
+    ok, note = await client.enable_secret_scanning("o", "r")
+    assert route.called
+    assert ok is True
+    assert note == ""
+
+
+@respx.mock
+async def test_enable_secret_scanning_failure_carries_note(
+    client: GitHubClient,
+) -> None:
+    respx.patch(f"{API}/repos/o/r").mock(
+        return_value=httpx.Response(403, json={"message": "Forbidden"})
+    )
+    ok, note = await client.enable_secret_scanning("o", "r")
+    assert ok is False
+    assert note.startswith("403")
+
+
+# --------------------------------------------------------------------------- #
 # Batched per-repo GraphQL prefetch
 # --------------------------------------------------------------------------- #
 def _graph_repo_node(
