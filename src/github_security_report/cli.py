@@ -128,6 +128,9 @@ def _org_to_dict(org: OrgReport) -> dict:
                 "clean_count": s.clean_count,
                 "nag": [r.full_name for r in s.nag_repos],
                 "unknown_count": s.unknown_count,
+                # True when organisation feature gating skipped this signal
+                # (no supporting workflows found), so nothing was collected.
+                "skipped": s.skipped,
             }
             for s in org.sections
         ],

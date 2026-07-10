@@ -6,8 +6,8 @@ Pure, transport-free logic encoding every Phase 0 finding
 (``docs/phase0-findings.md``):
 
 - the single code-scanning feed is partitioned by ``tool.name`` into CodeQL,
-  Scorecard and zizmor -- counts are filtered per tool;
-- CodeQL/Scorecard/zizmor enablement is the presence of that tool in
+  Scorecard, zizmor and aislop -- counts are filtered per tool;
+- CodeQL/Scorecard/zizmor/aislop enablement is the presence of that tool in
   ``code-scanning/analyses`` (not ``default-setup``); a 404 on code scanning
   means it is disabled entirely;
 - secret scanning 404 = disabled, 200 [] = enabled-clean;
@@ -18,11 +18,12 @@ Pure, transport-free logic encoding every Phase 0 finding
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Set
 from dataclasses import dataclass, field
 
 from github_security_report import severity
 from github_security_report.models import (
+    CODE_SCANNING_TOOLS,
     Repo,
     RepoSignal,
     RepoState,
@@ -50,7 +51,7 @@ class RepoFacts:
     """Raw per-repository facts gathered by the client, pre-classification."""
 
     repo: Repo
-    # Code scanning (covers CodeQL, Scorecard, zizmor).
+    # Code scanning (covers CodeQL, Scorecard, zizmor, aislop).
     code_scanning_status: int = 200  # 200 ok, 404 disabled, 403 forbidden
     code_scanning_tools: set[str] = field(default_factory=set)  # analyses tool names
     code_scanning_alerts: list[dict] = field(default_factory=list)  # all tools
@@ -149,7 +150,10 @@ def classify_codeql(
     facts: RepoFacts, fail_severities: FailSeverities | None = None
 ) -> RepoSignal:
     return _code_scanning_tool_signal(
-        facts, SignalType.CODEQL, "CodeQL", fail_severities
+        facts,
+        SignalType.CODEQL,
+        CODE_SCANNING_TOOLS[SignalType.CODEQL],
+        fail_severities,
     )
 
 
@@ -157,7 +161,21 @@ def classify_zizmor(
     facts: RepoFacts, fail_severities: FailSeverities | None = None
 ) -> RepoSignal:
     return _code_scanning_tool_signal(
-        facts, SignalType.ZIZMOR, "zizmor", fail_severities
+        facts,
+        SignalType.ZIZMOR,
+        CODE_SCANNING_TOOLS[SignalType.ZIZMOR],
+        fail_severities,
+    )
+
+
+def classify_aislop(
+    facts: RepoFacts, fail_severities: FailSeverities | None = None
+) -> RepoSignal:
+    return _code_scanning_tool_signal(
+        facts,
+        SignalType.AISLOP,
+        CODE_SCANNING_TOOLS[SignalType.AISLOP],
+        fail_severities,
     )
 
 
@@ -166,8 +184,13 @@ def classify_scorecard(
 ) -> RepoSignal:
     """Scorecard: prefer the external aggregate score, else code-scanning findings."""
     repo = facts.repo
-    counts = count_code_scanning(facts.code_scanning_alerts, "Scorecard")
-    has_cs = "Scorecard" in facts.code_scanning_tools and facts.code_scanning_status == 200
+    counts = count_code_scanning(
+        facts.code_scanning_alerts, CODE_SCANNING_TOOLS[SignalType.SCORECARD]
+    )
+    has_cs = (
+        CODE_SCANNING_TOOLS[SignalType.SCORECARD] in facts.code_scanning_tools
+        and facts.code_scanning_status == 200
+    )
     cutoff = _cutoff(SignalType.SCORECARD, fail_severities)
 
     if facts.scorecard_status == 200 and facts.scorecard_score is not None:
@@ -241,22 +264,36 @@ def classify_dependabot(
     return RepoSignal(repo, SignalType.DEPENDABOT, state, counts=counts)
 
 
-_CLASSIFIERS = (
-    classify_codeql,
-    classify_scorecard,
-    classify_zizmor,
-    classify_dependabot,
-    classify_secret_scanning,
-)
+# One classifier per signal, keyed so orchestration can skip gated-out signals.
+_Classifier = Callable[["RepoFacts", "FailSeverities | None"], RepoSignal]
+
+_CLASSIFIERS: dict[SignalType, _Classifier] = {
+    SignalType.CODEQL: classify_codeql,
+    SignalType.SCORECARD: classify_scorecard,
+    SignalType.ZIZMOR: classify_zizmor,
+    SignalType.AISLOP: classify_aislop,
+    SignalType.DEPENDABOT: classify_dependabot,
+    SignalType.SECRET_SCANNING: classify_secret_scanning,
+}
 
 
 def classify_repo(
-    facts: RepoFacts, fail_severities: FailSeverities | None = None
+    facts: RepoFacts,
+    fail_severities: FailSeverities | None = None,
+    *,
+    skip: Set[SignalType] = frozenset(),
 ) -> list[RepoSignal]:
-    """Classify a repository across all five signals.
+    """Classify a repository across all signals (minus any in ``skip``).
 
     ``fail_severities`` optionally overrides the per-signal fail-severity cutoff
     (otherwise each signal uses its category default); it governs which findings
-    are severe enough to mark a repository as an offender.
+    are severe enough to mark a repository as an offender. ``skip`` names
+    signals to leave unclassified entirely -- used when organisation feature
+    gating (:mod:`gating`) found no support for a workflow-driven tool, so the
+    repository is neither nagged nor counted for that signal.
     """
-    return [classifier(facts, fail_severities) for classifier in _CLASSIFIERS]
+    return [
+        classifier(facts, fail_severities)
+        for signal, classifier in _CLASSIFIERS.items()
+        if signal not in skip
+    ]

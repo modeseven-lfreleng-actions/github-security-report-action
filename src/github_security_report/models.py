@@ -3,7 +3,7 @@
 """Domain models for the security report.
 
 Encodes the Phase 0 design (see ``docs/BRIEF.md`` and
-``docs/phase0-findings.md``): the five v1 signals, the four-state per-report
+``docs/phase0-findings.md``): the six ranked signals, the four-state per-report
 classification, severity counts with hierarchical worst-first ordering, and the
 ranking rules (alert tables sort by severity descending; Scorecard by score
 ascending).
@@ -20,11 +20,12 @@ from github_security_report.severity import Severity
 
 
 class SignalType(str, Enum):
-    """The five v1 ranked signals."""
+    """The six ranked signals."""
 
     CODEQL = "codeql"
     SCORECARD = "scorecard"
     ZIZMOR = "zizmor"
+    AISLOP = "aislop"
     DEPENDABOT = "dependabot"
     SECRET_SCANNING = "secret_scanning"
 
@@ -35,6 +36,7 @@ class SignalType(str, Enum):
             SignalType.CODEQL: CategoryKey.CODEQL,
             SignalType.SCORECARD: CategoryKey.SCORECARD,
             SignalType.ZIZMOR: CategoryKey.ZIZMOR,
+            SignalType.AISLOP: CategoryKey.AISLOP,
             SignalType.DEPENDABOT: CategoryKey.DEPENDABOT_ALERTS,
             SignalType.SECRET_SCANNING: CategoryKey.SECRET_SCANNING,
         }[self]
@@ -66,6 +68,20 @@ class SignalType(str, Enum):
     def sort_ascending(self) -> bool:
         """Scorecard ranks by score ascending (lower == worse); others descend."""
         return self is SignalType.SCORECARD
+
+
+# The code-scanning ``tool.name`` for every signal derived from the shared
+# code-scanning alert feed. The single authority for those names: the client's
+# per-repo enabled-probes, the classifiers and the feature gating all read this
+# mapping, so adding a SARIF-uploading tool is one entry here plus its
+# classifier. Signals absent from this mapping (Dependabot, secret scanning)
+# have their own APIs.
+CODE_SCANNING_TOOLS: dict[SignalType, str] = {
+    SignalType.CODEQL: "CodeQL",
+    SignalType.SCORECARD: "Scorecard",
+    SignalType.ZIZMOR: "zizmor",
+    SignalType.AISLOP: "aislop",
+}
 
 
 class RepoState(str, Enum):

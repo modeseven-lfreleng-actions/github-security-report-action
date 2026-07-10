@@ -98,6 +98,13 @@ CONFIG_SCHEMA: dict = {
                 # Releases/Tagging only when its newest release or tag is older
                 # than this many days (0 = flag every eligible repository).
                 "release_max_age_days": {"type": "integer", "minimum": 0},
+                # Organisation feature gating: when true (the default) the
+                # workflow-driven signals (Scorecard, zizmor, aislop) are
+                # probed only after a cheap support check (org ruleset,
+                # existing alerts, or sampled analyses); an unsupported signal
+                # is reported as skipped with a setup-guide pointer instead of
+                # nagging every repository. Set false to always probe.
+                "gating": {"type": "boolean"},
                 "ruleset_workflows": {
                     "type": "object",
                     "additionalProperties": {"type": "string"},
@@ -190,7 +197,7 @@ class SlackConfig:
 # Default mapping of signal value -> required-workflow path keyword. A repo
 # covered by an active org ruleset whose required workflow path contains the
 # keyword is treated as having that tool enabled (see :mod:`rulesets`).
-DEFAULT_RULESET_WORKFLOWS = {"zizmor": "zizmor"}
+DEFAULT_RULESET_WORKFLOWS = {"zizmor": "zizmor", "aislop": "aislop"}
 
 
 @dataclass(frozen=True)
@@ -251,6 +258,13 @@ class ReportConfig:
     # gives every repository a 60-day window: one tagged or released inside that
     # window is treated as recently maintained and omitted from the table.
     release_max_age_days: int = 60
+    # Organisation feature gating for the workflow-driven signals (Scorecard,
+    # zizmor, aislop): when true, each is collected only after a cheap check
+    # finds organisation support (an org ruleset requiring the workflow,
+    # existing code-scanning alerts, or analyses on a sample of repositories);
+    # otherwise the signal's section reports a single "Skipping feature" line.
+    # False disables the check and always probes every signal.
+    gating: bool = True
     # Read-only mapping (frozen dataclasses do not deep-freeze a plain dict, so a
     # MappingProxyType prevents in-place mutation of a shared config).
     ruleset_workflows: Mapping[str, str] = field(
@@ -376,6 +390,7 @@ def _report_from(data: dict, base: ReportConfig) -> ReportConfig:
                 "include_test",
                 "repo_min_age_days",
                 "release_max_age_days",
+                "gating",
             }
         },
     )

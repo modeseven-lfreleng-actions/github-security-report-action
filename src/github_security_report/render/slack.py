@@ -17,6 +17,8 @@ from collections.abc import Callable, Sequence
 from github_security_report.categories import CategoryKey
 from github_security_report.models import Repo, RepoSignal, SignalType
 from github_security_report.report import (
+    ORG_SETUP_DOC_URL,
+    SKIP_MESSAGE,
     SUMMARY_EMOJI,
     OrgReport,
     SignalSection,
@@ -206,6 +208,17 @@ def render_org_blocks(
     for section in org.sections:
         if visible(section.signal.category_key):
             text = f"*{section.signal.heading}*"
+            if section.skipped:
+                # Feature gating found no organisation support: one skip line
+                # linking the setup guide, instead of a table and footer.
+                text += (
+                    f"\n{SUMMARY_EMOJI['excluded']} {SKIP_MESSAGE} — "
+                    f"<{ORG_SETUP_DOC_URL}|setup guide>"
+                )
+                blocks.append(
+                    {"type": "section", "text": {"type": "mrkdwn", "text": text}}
+                )
+                continue
             if section.offenders:
                 table = _fixed_table(section, top_n)
                 text += f"\n```\n{table}\n```"

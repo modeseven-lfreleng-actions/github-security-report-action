@@ -8,7 +8,7 @@ in the code-scanning feed:
 - ``rule.security_severity_level`` -- critical / high / medium / low -- used by
   CodeQL and Scorecard, and the primary ranking key.
 - ``rule.severity`` -- error / warning / note -- the SARIF level, the only axis
-  zizmor populates.
+  zizmor and aislop populate.
 
 To present a single, uniform set of severity columns across every table (as the
 design requires), the SARIF level is normalised onto the security scale when no
@@ -58,12 +58,12 @@ _SECURITY_NAMES: dict[str, Severity] = {
     "low": Severity.LOW,
 }
 
-# SARIF level -> security scale, used only as a fallback (zizmor). zizmor's
-# SARIF encoder emits Low AND Informational findings as ``note``, but the scan
-# pipeline's --min-severity low floor keeps informational findings out of the
-# SARIF entirely, so a ``note`` alert is a genuine Low finding (matching the
-# ruleset-enforced PR gate, which blocks on note-and-above). The rare ``none``
-# level stays at INFORMATIONAL.
+# SARIF level -> security scale, used only as a fallback (zizmor, aislop).
+# zizmor's SARIF encoder emits Low AND Informational findings as ``note``, but
+# the scan pipeline's --min-severity low floor keeps informational findings out
+# of the SARIF entirely, so a ``note`` alert is a genuine Low finding (matching
+# the ruleset-enforced PR gate, which blocks on note-and-above). aislop uses
+# the same three levels. The rare ``none`` level stays at INFORMATIONAL.
 _SARIF_LEVEL_NAMES: dict[str, Severity] = {
     "error": Severity.HIGH,
     "warning": Severity.MEDIUM,

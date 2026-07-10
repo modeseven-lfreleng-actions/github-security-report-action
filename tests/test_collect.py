@@ -84,8 +84,16 @@ class FakeClient:
             }
         ]
 
-    async def code_scanning_tools(self, org: str, repo: str) -> tuple[int, set[str]]:
-        return 200, self.tools.get(repo, set())
+    async def code_scanning_tools(
+        self, org: str, repo: str, tools: tuple[str, ...] | None = None
+    ) -> tuple[int, set[str]]:
+        found = self.tools.get(repo, set())
+        if tools is not None:
+            found = found & set(tools)
+        return 200, found
+
+    async def code_scanning_tool_present(self, org: str, repo: str, tool: str) -> bool:
+        return tool in self.tools.get(repo, set())
 
     async def secret_scanning_status(self, org: str, repo: str) -> int:
         return 200
@@ -162,6 +170,63 @@ async def test_collect_org_end_to_end() -> None:
     zizmor = sections[SignalType.ZIZMOR]
     assert zizmor.nag_repos == []
     assert zizmor.clean_count == 2
+
+
+async def test_collect_org_gates_unsupported_aislop() -> None:
+    # The default fake has no aislop evidence anywhere (no alerts, no ruleset,
+    # no analyses), so feature gating skips the signal: its section is marked
+    # skipped, and no repository is classified (or nagged) for it.
+    report = await collect.collect_org(
+        FakeClient(), OrgConfig(name="o"), ReportConfig(), generated_at=WHEN
+    )
+    aislop = _sections(report)[SignalType.AISLOP]
+    assert aislop.skipped is True
+    assert aislop.offenders == []
+    assert aislop.nag_repos == []
+    assert aislop.clean_count == 0
+    # Supported signals are untouched.
+    assert _sections(report)[SignalType.ZIZMOR].skipped is False
+
+
+async def test_collect_org_gating_disabled_probes_everything() -> None:
+    # report.gating=false restores the old behaviour: aislop is probed per
+    # repo, found nowhere, and every in-scope repo is nagged.
+    report = await collect.collect_org(
+        FakeClient(),
+        OrgConfig(name="o"),
+        ReportConfig(gating=False),
+        generated_at=WHEN,
+    )
+    aislop = _sections(report)[SignalType.AISLOP]
+    assert aislop.skipped is False
+    assert {r.name for r in aislop.nag_repos} == {
+        "dependamerge",
+        "git-configure-action",
+    }
+
+
+async def test_collect_org_aislop_supported_via_alert_evidence() -> None:
+    # One aislop alert in the org sweep is support evidence: the signal is
+    # collected normally and the alerting repo becomes an offender.
+    class AislopClient(FakeClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.bulk["code-scanning"].append(
+                {
+                    "repository": {"name": "dependamerge"},
+                    "tool": {"name": "aislop"},
+                    "rule": {"security_severity_level": None, "severity": "note"},
+                }
+            )
+            self.tools["dependamerge"] = {"CodeQL", "Scorecard", "aislop"}
+
+    report = await collect.collect_org(
+        AislopClient(), OrgConfig(name="o"), ReportConfig(), generated_at=WHEN
+    )
+    aislop = _sections(report)[SignalType.AISLOP]
+    assert aislop.skipped is False
+    assert [s.repo.name for s in aislop.offenders] == ["dependamerge"]
+    assert aislop.offenders[0].counts.low == 1  # note -> low
 
 
 async def test_collect_org_groups_alerts_by_repo() -> None:

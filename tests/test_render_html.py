@@ -62,6 +62,21 @@ class TestOrgHtml:
         out = html.render_org_html(_org("o", [zizmor]))
         assert ">Info</th>" in out
 
+    def test_skipped_section_renders_single_skip_line(self) -> None:
+        # A gated-out signal renders its heading plus one skip line linking
+        # the setup guide -- no table and no summary footer.
+        org = report.build_org_report(
+            "o",
+            [],
+            repo_count=1,
+            generated_at=WHEN,
+            skipped_signals={SignalType.AISLOP},
+        )
+        out = html.render_org_html(org)
+        assert "AI Slop Analysis" in out
+        assert report.SKIP_MESSAGE in out
+        assert report.ORG_SETUP_DOC_URL in out
+
     def test_informational_column_absent_without_info(self) -> None:
         codeql = RepoSignal(
             _repo("bad"),

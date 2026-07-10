@@ -72,6 +72,23 @@ class TestSection:
         assert "| Repository | Critical | High | Medium | Low | Total |" in out
         assert "Info" not in out
 
+    def test_skipped_section_renders_single_skip_line(self) -> None:
+        # A gated-out signal renders its heading plus one skip line pointing at
+        # the setup guide -- no table, no summary footer.
+        org = report.build_org_report(
+            "lfreleng-actions",
+            [],
+            repo_count=1,
+            generated_at=WHEN,
+            skipped_signals={SignalType.AISLOP},
+        )
+        section = next(s for s in org.sections if s.signal is SignalType.AISLOP)
+        out = markdown.render_section(section)
+        assert "## AI Slop Analysis" in out
+        assert report.SKIP_MESSAGE in out
+        assert report.ORG_SETUP_DOC_URL in out
+        assert "|" not in out  # no table
+
     def test_secret_scanning_single_count_column(self) -> None:
         sig = RepoSignal(
             _repo("leaky"),

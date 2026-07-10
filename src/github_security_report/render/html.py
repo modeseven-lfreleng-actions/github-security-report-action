@@ -20,6 +20,8 @@ from github_security_report.categories import CategoryKey
 from github_security_report.models import Repo, RepoSignal, SignalType
 from github_security_report.render import markdown
 from github_security_report.report import (
+    ORG_SETUP_DOC_URL,
+    SKIP_MESSAGE,
     SUMMARY_EMOJI,
     OrgReport,
     SignalSection,
@@ -146,6 +148,24 @@ def _section_context(
     excluded: Sequence[Repo] = (),
     top_n: int | None = None,
 ) -> dict:
+    meta = section.signal.meta
+    if section.skipped:
+        # Feature gating found no organisation support: the section renders a
+        # single skip line linking the setup guide (no table, no footer).
+        return {
+            "title": meta.title,
+            "url": meta.url,
+            "description": "",
+            "numeric": True,
+            "columns": [],
+            "rows": [],
+            "hidden": 0,
+            "total_cells": None,
+            "summary": [],
+            "skipped": True,
+            "skip_message": SKIP_MESSAGE,
+            "skip_url": ORG_SETUP_DOC_URL,
+        }
     offenders, hidden = truncate(section.offenders, top_n)
     informational = section_shows_informational(offenders)
     # A trailing totals row sums the additive severity columns across the shown
@@ -157,7 +177,6 @@ def _section_context(
         if section.signal.uses_severity_columns and offenders
         else None
     )
-    meta = section.signal.meta
     name_to_repo = {r.name: r for r in (*section.nag_repos, *excluded)}
     return {
         "title": meta.title,

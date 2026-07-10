@@ -12,8 +12,8 @@
 
 > Security and quality **reporting** (not scanning) across GitHub
 > organisations. Aggregates existing signals — CodeQL, OpenSSF Scorecard,
-> zizmor, Dependabot, and secret scanning — and ranks the worst offenders so
-> remediation effort goes where it is needed.
+> zizmor, aislop (AI slop), Dependabot, and secret scanning — and ranks the
+> worst offenders so remediation effort goes where it is needed.
 
 ## 🗒️ Published reports
 
@@ -38,10 +38,21 @@ stay brevity-first; the explanatory per-category description and documentation
 link are shown only on the richer Markdown and HTML (GitHub Pages) outputs.
 
 The single GitHub code-scanning feed is partitioned by `tool.name` into CodeQL,
-Scorecard, and zizmor; Scorecard prefers the external aggregate score and falls
-back to code-scanning findings. See [`docs/BRIEF.md`](docs/BRIEF.md) and
-[`docs/phase0-findings.md`](docs/phase0-findings.md) for the full design and the
-API research it is built on.
+Scorecard, zizmor, and aislop; Scorecard prefers the external aggregate score
+and falls back to code-scanning findings. See [`docs/BRIEF.md`](docs/BRIEF.md)
+and [`docs/phase0-findings.md`](docs/phase0-findings.md) for the full design and
+the API research it is built on.
+
+The workflow-driven signals (OpenSSF Scorecard, zizmor, aislop) only produce
+data when an organisation has deployed supporting workflows. The tool checks
+for that support cheaply before collecting (**feature gating**): an
+organisation with no evidence of a tool — no ruleset requiring its workflow,
+no alerts, no analyses on a sample of repositories — gets a single
+`⏩ Skipping feature: organisation support missing` line for that section
+instead of a nag list. See the
+[organisation scan setup guide](docs/org-scan-setup.md) for the required
+workflows, and disable the check with `report.gating: false` if you want to
+probe everything regardless.
 
 Further sections report **configuration posture** and **freshness** as plain
 tables (org mode):
@@ -109,7 +120,7 @@ organisation and **Repository access** set to *All repositories*, then grant:
 | Metadata | Mandatory baseline; listing organisation repositories |
 | Contents | `.github/dependabot.yml`, latest release, and tag dates |
 | Dependabot alerts | Open Dependabot vulnerability alerts |
-| Code scanning alerts | CodeQL / Scorecard / zizmor findings |
+| Code scanning alerts | CodeQL / Scorecard / zizmor / aislop findings |
 | Secret scanning alerts | Open secret-scanning alerts |
 | Administration | Dependabot enablement + security-updates status, and effective branch rules |
 
@@ -267,7 +278,7 @@ both true.
 The example above hides Zizmor on every surface, and keeps Releases / Tagging
 out of the terminal and Slack while still publishing it to the Markdown and HTML
 Pages output. The valid category keys are: `codeql`, `scorecard`, `zizmor`,
-`dependabot_alerts`, `secret_scanning`, `dependabot_alerts_enabled`,
+`aislop`, `dependabot_alerts`, `secret_scanning`, `dependabot_alerts_enabled`,
 `dependabot_updates_enabled`, `dependabot_cooldown`, `releases`,
 `mutable_releases`, `private_vulnerability_reporting`. Like the other `report`
 settings, `categories` can be set
@@ -284,22 +295,49 @@ unless every org sharing that channel also disables it (this mirrors the
 most-generous `top_n` rule applied to the same grouping). The terminal, Markdown
 and HTML surfaces are per-org and are not affected by this union.
 
+### Organisation feature gating
+
+The workflow-driven signals (OpenSSF Scorecard, zizmor, aislop) need
+organisation-deployed workflows before they produce any data (see the
+[organisation scan setup guide](docs/org-scan-setup.md)). By default the tool
+runs a cheap support check per organisation before collecting each of them:
+evidence is an org ruleset requiring the tool's workflow, existing
+code-scanning alerts from the tool, analyses on a sample of repositories, or
+(for Scorecard) an external scorecard.dev score. A signal with no evidence is
+**skipped** — not probed per repository, not classified — and its section
+shows a single `⏩ Skipping feature: organisation support missing` line
+linking the setup guide, on every output surface. Set `report.gating` to
+`false` (globally or per organisation) to always probe everything:
+
+```json
+{
+  "report": { "gating": false },
+  "organizations": [{ "name": "lfreleng-actions" }]
+}
+```
+
+Gating decides **collection**; the per-category render toggles above decide
+**presentation**. A skipped section still renders (as the one-line notice)
+unless its category is also disabled.
+
 ### Pass/fail severity cutoff
 
-The severity-ranked signals (CodeQL, Scorecard, Zizmor, Dependabot alerts) use a
-`fail_severity` cutoff to decide when a repository counts as a failure. A
-repository is flagged as an offender only when it carries a finding **at or
-above** the cutoff; findings below it fold into the clean count. Severities run
-(lowest to highest) `informational`, `low`, `medium`, `high`, `critical` —
-`informational` being the sub-low rung for SARIF `none` findings and
-unclassifiable alerts. Zizmor's SARIF `note` findings normalise to `low`
+The severity-ranked signals (CodeQL, Scorecard, Zizmor, aislop, Dependabot
+alerts) use a `fail_severity` cutoff to decide when a repository counts as a
+failure. A repository is flagged as an offender only when it carries a finding
+**at or above** the cutoff; findings below it fold into the clean count.
+Severities run (lowest to highest) `informational`, `low`, `medium`, `high`,
+`critical` — `informational` being the sub-low rung for SARIF `none` findings
+and unclassifiable alerts. Zizmor's SARIF `note` findings normalise to `low`
 (zizmor emits its Low findings at `note`, and the organisation scan pipeline's
 `--min-severity low` floor keeps informational findings out of the uploaded
 SARIF), matching the ruleset-enforced PR gate that blocks on note-and-above.
+aislop populates the same SARIF level axis and normalises identically.
 
 The global default cutoff is `medium`, so `low` and `informational` findings
-pass. Zizmor defaults to `low` (only `informational` passes). Override the
-cutoff per category under `report.categories.<key>.fail_severity`:
+pass. Zizmor and aislop default to `low` (only `informational` passes).
+Override the cutoff per category under
+`report.categories.<key>.fail_severity`:
 
 ```json
 {
