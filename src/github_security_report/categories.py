@@ -118,8 +118,7 @@ _CATEGORIES: dict[CategoryKey, CategoryMeta] = {
         fail_label=None,
         url="https://github.com/scanaislop/aislop",
         description=(
-            "aislop AI-slop / code-quality findings, ranked worst-first by "
-            "severity."
+            "aislop AI-slop / code-quality findings, ranked worst-first by severity."
         ),
         # aislop, like zizmor, populates only the SARIF level axis
         # (error/warning/note); "note" normalises to LOW (see severity.py), so

@@ -54,8 +54,23 @@ def _plain_row(sig: RepoSignal, *, informational: bool = False) -> list[str]:
     info = [str(c.informational)] if informational else []
     if sig.signal is SignalType.SCORECARD:
         score = f"{sig.score:.1f}" if sig.score is not None else "-"
-        return [sig.repo.name, score, str(c.critical), str(c.high), str(c.medium), str(c.low), *info]
-    return [sig.repo.name, str(c.critical), str(c.high), str(c.medium), str(c.low), *info]
+        return [
+            sig.repo.name,
+            score,
+            str(c.critical),
+            str(c.high),
+            str(c.medium),
+            str(c.low),
+            *info,
+        ]
+    return [
+        sig.repo.name,
+        str(c.critical),
+        str(c.high),
+        str(c.medium),
+        str(c.low),
+        *info,
+    ]
 
 
 def _plain_total_row(
@@ -95,6 +110,7 @@ def _fixed_table(section: SignalSection, top_n: int) -> str:
     for row in rows:
         for i, cell in enumerate(row):
             widths[i] = max(widths[i], len(cell))
+
     # First column left-aligned (repo name), numeric columns right-aligned.
     def fmt(row: list[str]) -> str:
         cells = [row[0].ljust(widths[0])]
@@ -231,9 +247,7 @@ def render_org_blocks(
                 # Only genuine absence of data (no rows and no countable state)
                 # warrants "no data"; an all-offender table has nothing to add.
                 text += "\nno data"
-            blocks.append(
-                {"type": "section", "text": {"type": "mrkdwn", "text": text}}
-            )
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
         # Dependabot posture sub-tables follow the Dependabot signal block.
         if section.signal is SignalType.DEPENDABOT:
             for table_section in org.dependabot_tables:
@@ -246,9 +260,7 @@ def render_org_blocks(
         block = _table_block(org.releases, top_n, excluded=excluded)
         if block is not None:
             blocks.append(block)
-    if org.mutable_releases is not None and visible(
-        org.mutable_releases.category.key
-    ):
+    if org.mutable_releases is not None and visible(org.mutable_releases.category.key):
         block = _table_block(org.mutable_releases, top_n, excluded=excluded)
         if block is not None:
             blocks.append(block)
@@ -305,9 +317,7 @@ def render_payload(
     blocks: list[dict] = []
     for org in orgs:
         blocks.extend(
-            render_org_blocks(
-                org, top_n=top_n, pages_url=pages_url, show=show
-            )
+            render_org_blocks(org, top_n=top_n, pages_url=pages_url, show=show)
         )
     blocks = _enforce_block_limit(blocks, pages_url)
     names = ", ".join(o.org for o in orgs)

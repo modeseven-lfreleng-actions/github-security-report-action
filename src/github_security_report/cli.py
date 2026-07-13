@@ -59,7 +59,10 @@ def _version_callback(value: bool) -> None:
 @app.callback()
 def main(
     _version: bool = typer.Option(
-        False, "--version", callback=_version_callback, is_eager=True,
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
         help="Show the version and exit.",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging."),
@@ -176,9 +179,7 @@ def _slack_show(
     when any contributing org would show it on Slack -- mirroring the
     most-generous ``top_n`` rule for the same grouping.
     """
-    return lambda key: any(
-        oc.report.shows_category(key, "slack") for oc, _ in items
-    )
+    return lambda key: any(oc.report.shows_category(key, "slack") for oc, _ in items)
 
 
 def _write_org_files(
@@ -192,15 +193,11 @@ def _write_org_files(
     org_dir = output_dir / slug
     org_dir.mkdir(parents=True, exist_ok=True)
     (org_dir / "report.md").write_text(
-        md_render.render_org(
-            org, top_n=top_n, show=_show(report_cfg, "markdown")
-        ),
+        md_render.render_org(org, top_n=top_n, show=_show(report_cfg, "markdown")),
         encoding="utf-8",
     )
     (org_dir / "report.html").write_text(
-        html_render.render_org_html(
-            org, top_n=top_n, show=_show(report_cfg, "html")
-        ),
+        html_render.render_org_html(org, top_n=top_n, show=_show(report_cfg, "html")),
         encoding="utf-8",
     )
     # report.json is the complete machine-readable dataset, so the per-output
@@ -255,36 +252,48 @@ def _abort_network(console: Console, exc: NetworkError) -> NoReturn:
     raise typer.Exit(3)
 
 
-async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
-                   pages_url: str | None, top_n: int | None, force_notify: bool,
-                   slack_channel: str | None = None,
-                   repo_min_age_days: int | None = None,
-                   release_max_age_days: int | None = None,
-                   releases_exclude: tuple[str, ...] | None = None,
-                   top_n_report: int | None = None,
-                   top_n_cli: int | None = None,
-                   top_n_slack: int | None = None) -> int:
+async def _run_org(
+    cfg: Config,
+    *,
+    console: Console,
+    output_dir: Path | None,
+    pages_url: str | None,
+    top_n: int | None,
+    force_notify: bool,
+    slack_channel: str | None = None,
+    repo_min_age_days: int | None = None,
+    release_max_age_days: int | None = None,
+    releases_exclude: tuple[str, ...] | None = None,
+    top_n_report: int | None = None,
+    top_n_cli: int | None = None,
+    top_n_slack: int | None = None,
+) -> int:
     now = dt.datetime.now(dt.timezone.utc)
     pairs: list[tuple[OrgConfig, OrgReport]] = []
     for org_cfg in cfg.organizations:
         token = config.resolve_token(org_cfg)
         if not token:
-            console.print(f"[red]No token in ${org_cfg.token_env} for {org_cfg.name}[/red]")
+            console.print(
+                f"[red]No token in ${org_cfg.token_env} for {org_cfg.name}[/red]"
+            )
             return 2
         # CLI overrides win over config for the Releases/Tagging controls.
         report_cfg = org_cfg.report
         if repo_min_age_days is not None:
             report_cfg = replace(report_cfg, repo_min_age_days=repo_min_age_days)
         if release_max_age_days is not None:
-            report_cfg = replace(
-                report_cfg, release_max_age_days=release_max_age_days
-            )
+            report_cfg = replace(report_cfg, release_max_age_days=release_max_age_days)
         effective_cfg = org_cfg
         if releases_exclude is not None:
             effective_cfg = replace(org_cfg, releases_exclude=releases_exclude)
         async with GitHubClient(token) as client:
             pairs.append(
-                (org_cfg, await collect.collect_org(client, effective_cfg, report_cfg, generated_at=now))
+                (
+                    org_cfg,
+                    await collect.collect_org(
+                        client, effective_cfg, report_cfg, generated_at=now
+                    ),
+                )
             )
     org_reports = [report for _, report in pairs]
 
@@ -376,7 +385,10 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
         outputs["slack_payload"] = json.dumps(payloads[0])
         if output_dir:
             for payload in payloads:
-                dest = output_dir / f"slack-payload-{_safe_component(payload['channel'])}.json"
+                dest = (
+                    output_dir
+                    / f"slack-payload-{_safe_component(payload['channel'])}.json"
+                )
                 dest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     runner.write_github_output(outputs)
     # The job summary mirrors the GitHub Pages Markdown, so it uses the report
@@ -396,9 +408,15 @@ async def _run_org(cfg: Config, *, console: Console, output_dir: Path | None,
     return 0
 
 
-async def _run_repo(owner: str, repo_name: str, *, token_env: str, console: Console,
-                    fail_threshold: str,
-                    ruleset_workflows: Mapping[str, str] | None = None) -> int:
+async def _run_repo(
+    owner: str,
+    repo_name: str,
+    *,
+    token_env: str,
+    console: Console,
+    fail_threshold: str,
+    ruleset_workflows: Mapping[str, str] | None = None,
+) -> int:
     token = os.environ.get(token_env, "").strip()
     if not token:
         console.print(f"[red]No token in ${token_env}[/red]")
@@ -411,7 +429,9 @@ async def _run_repo(owner: str, repo_name: str, *, token_env: str, console: Cons
         return 2
 
     now = dt.datetime.now(dt.timezone.utc)
-    org = build_org_report(f"{owner}/{repo_name}", signals, repo_count=1, generated_at=now)
+    org = build_org_report(
+        f"{owner}/{repo_name}", signals, repo_count=1, generated_at=now
+    )
     term_render.render_org(org, console)
 
     runner.append_step_summary(md_render.render_org(org))
@@ -466,7 +486,9 @@ async def _run_remediate(
 
 def _repo_outputs(signals: list[RepoSignal], fail_threshold: str) -> dict[str, str]:
     outputs = {s.signal.value + "_open": str(s.counts.total) for s in signals}
-    outputs["failed"] = "true" if runner.should_fail(signals, fail_threshold) else "false"
+    outputs["failed"] = (
+        "true" if runner.should_fail(signals, fail_threshold) else "false"
+    )
     return outputs
 
 
@@ -475,24 +497,77 @@ def _repo_outputs(signals: list[RepoSignal], fail_threshold: str) -> dict[str, s
 # --------------------------------------------------------------------------- #
 @app.command()
 def report(
-    config_file: str | None = typer.Option(None, "--config", "-c", help="Path to a JSON config file."),
-    config_data: str | None = typer.Option(None, "--config-data", help="Raw or base64 JSON config (vars/secrets)."),
-    org: str | None = typer.Option(None, "--org", help="Single organisation (shorthand for org mode)."),
+    config_file: str | None = typer.Option(
+        None, "--config", "-c", help="Path to a JSON config file."
+    ),
+    config_data: str | None = typer.Option(
+        None, "--config-data", help="Raw or base64 JSON config (vars/secrets)."
+    ),
+    org: str | None = typer.Option(
+        None, "--org", help="Single organisation (shorthand for org mode)."
+    ),
     scope: str = typer.Option("auto", "--scope", help="auto | org | repo."),
-    repo: str | None = typer.Option(None, "--repo", help="owner/name for repo mode (else git-detected)."),
-    token_env: str = typer.Option("GITHUB_TOKEN", "--token-env", help="Env var holding the repo-mode token."),
-    output_dir: str | None = typer.Option(None, "--output-dir", "-o", help="Directory for Pages output (org mode)."),
-    pages_url: str | None = typer.Option(None, "--pages-url", help="GitHub Pages URL for the Slack link."),
-    slack_channel: str | None = typer.Option(None, "--slack-channel", help="Slack channel ID; overrides config slack.channel (e.g. SLACK_CHANNEL_ID)."),
-    top_n: int | None = typer.Option(None, "--top-n", help="Offenders shown per signal across all outputs (0 = no limit; default: config, else 10). Overridden per output by the flags below."),
-    top_n_report: int | None = typer.Option(None, "--top-n-report", help="Offenders per signal in the GitHub Pages output (0 = no limit; overrides --top-n)."),
-    top_n_cli: int | None = typer.Option(None, "--top-n-cli", help="Offenders per signal in the terminal output (0 = no limit; overrides --top-n)."),
-    top_n_slack: int | None = typer.Option(None, "--top-n-slack", help="Offenders per signal in the Slack digest (0 = no limit; overrides --top-n)."),
-    fail_threshold: str = typer.Option("none", "--fail-threshold", help="none|low|medium|high|critical|any (repo mode)."),
-    force_notify: bool = typer.Option(False, "--force-notify", help="Post to Slack regardless of report_day."),
-    repo_min_age_days: int | None = typer.Option(None, "--repo-min-age-days", "--release-min-age-days", help="Exclude repos created within N days from Releases/Tagging (0 = include all; default: config, else 28). --release-min-age-days is a deprecated alias."),
-    release_max_age_days: int | None = typer.Option(None, "--release-max-age-days", help="Flag a repo in Releases/Tagging only when its newest release or tag is older than N days (0 = flag every eligible repo; default: config, else 60)."),
-    releases_exclude: list[str] | None = typer.Option(None, "--releases-exclude", help="Repository name to omit from the Releases/Tagging table (repeatable; overrides config)."),
+    repo: str | None = typer.Option(
+        None, "--repo", help="owner/name for repo mode (else git-detected)."
+    ),
+    token_env: str = typer.Option(
+        "GITHUB_TOKEN", "--token-env", help="Env var holding the repo-mode token."
+    ),
+    output_dir: str | None = typer.Option(
+        None, "--output-dir", "-o", help="Directory for Pages output (org mode)."
+    ),
+    pages_url: str | None = typer.Option(
+        None, "--pages-url", help="GitHub Pages URL for the Slack link."
+    ),
+    slack_channel: str | None = typer.Option(
+        None,
+        "--slack-channel",
+        help="Slack channel ID; overrides config slack.channel (e.g. SLACK_CHANNEL_ID).",
+    ),
+    top_n: int | None = typer.Option(
+        None,
+        "--top-n",
+        help="Offenders shown per signal across all outputs (0 = no limit; default: config, else 10). Overridden per output by the flags below.",
+    ),
+    top_n_report: int | None = typer.Option(
+        None,
+        "--top-n-report",
+        help="Offenders per signal in the GitHub Pages output (0 = no limit; overrides --top-n).",
+    ),
+    top_n_cli: int | None = typer.Option(
+        None,
+        "--top-n-cli",
+        help="Offenders per signal in the terminal output (0 = no limit; overrides --top-n).",
+    ),
+    top_n_slack: int | None = typer.Option(
+        None,
+        "--top-n-slack",
+        help="Offenders per signal in the Slack digest (0 = no limit; overrides --top-n).",
+    ),
+    fail_threshold: str = typer.Option(
+        "none",
+        "--fail-threshold",
+        help="none|low|medium|high|critical|any (repo mode).",
+    ),
+    force_notify: bool = typer.Option(
+        False, "--force-notify", help="Post to Slack regardless of report_day."
+    ),
+    repo_min_age_days: int | None = typer.Option(
+        None,
+        "--repo-min-age-days",
+        "--release-min-age-days",
+        help="Exclude repos created within N days from Releases/Tagging (0 = include all; default: config, else 28). --release-min-age-days is a deprecated alias.",
+    ),
+    release_max_age_days: int | None = typer.Option(
+        None,
+        "--release-max-age-days",
+        help="Flag a repo in Releases/Tagging only when its newest release or tag is older than N days (0 = flag every eligible repo; default: config, else 60).",
+    ),
+    releases_exclude: list[str] | None = typer.Option(
+        None,
+        "--releases-exclude",
+        help="Repository name to omit from the Releases/Tagging table (repeatable; overrides config).",
+    ),
     no_color: bool = typer.Option(False, "--no-color", help="Disable coloured output."),
 ) -> None:
     """Generate a security and quality report."""
@@ -548,13 +623,18 @@ def report(
         try:
             code = asyncio.run(
                 _run_org(
-                    cfg, console=console,
+                    cfg,
+                    console=console,
                     output_dir=Path(output_dir) if output_dir else None,
-                    pages_url=pages_url, top_n=top_n, force_notify=force_notify,
+                    pages_url=pages_url,
+                    top_n=top_n,
+                    force_notify=force_notify,
                     slack_channel=slack_channel or None,
                     repo_min_age_days=repo_min_age_days,
                     release_max_age_days=release_max_age_days,
-                    releases_exclude=tuple(releases_exclude) if releases_exclude else None,
+                    releases_exclude=tuple(releases_exclude)
+                    if releases_exclude
+                    else None,
                     top_n_report=top_n_report,
                     top_n_cli=top_n_cli,
                     top_n_slack=top_n_slack,
@@ -571,8 +651,11 @@ def report(
         try:
             code = asyncio.run(
                 _run_repo(
-                    detected[0], detected[1], token_env=token_env,
-                    console=console, fail_threshold=fail_threshold,
+                    detected[0],
+                    detected[1],
+                    token_env=token_env,
+                    console=console,
+                    fail_threshold=fail_threshold,
                     ruleset_workflows=rw,
                 )
             )
@@ -583,13 +666,35 @@ def report(
 
 @app.command()
 def remediate(
-    config_file: str | None = typer.Option(None, "--config", "-c", help="Path to a JSON config file."),
-    config_data: str | None = typer.Option(None, "--config-data", help="Raw or base64 JSON config (vars/secrets)."),
-    org: str | None = typer.Option(None, "--org", help="Single organisation (shorthand for org mode)."),
-    scope: str = typer.Option("org", "--scope", help="Only 'org' is supported; remediation is organisation-scoped."),
-    category: list[str] | None = typer.Option(None, "--category", help="Remediable category to act on (repeatable; default: all). One of: codeql, secret_scanning, dependabot_alerts_enabled, dependabot_updates_enabled, private_vulnerability_reporting."),
-    token_env: str = typer.Option("GITHUB_TOKEN", "--token-env", help="Env var holding a WRITE-capable org-admin PAT. Used for both reading posture and enabling features across every configured org."),
-    apply: bool = typer.Option(False, "--apply", help="Perform the writes. Without this flag remediate only previews (dry run)."),
+    config_file: str | None = typer.Option(
+        None, "--config", "-c", help="Path to a JSON config file."
+    ),
+    config_data: str | None = typer.Option(
+        None, "--config-data", help="Raw or base64 JSON config (vars/secrets)."
+    ),
+    org: str | None = typer.Option(
+        None, "--org", help="Single organisation (shorthand for org mode)."
+    ),
+    scope: str = typer.Option(
+        "org",
+        "--scope",
+        help="Only 'org' is supported; remediation is organisation-scoped.",
+    ),
+    category: list[str] | None = typer.Option(
+        None,
+        "--category",
+        help="Remediable category to act on (repeatable; default: all). One of: codeql, secret_scanning, dependabot_alerts_enabled, dependabot_updates_enabled, private_vulnerability_reporting.",
+    ),
+    token_env: str = typer.Option(
+        "GITHUB_TOKEN",
+        "--token-env",
+        help="Env var holding a WRITE-capable org-admin PAT. Used for both reading posture and enabling features across every configured org.",
+    ),
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        help="Perform the writes. Without this flag remediate only previews (dry run).",
+    ),
     no_color: bool = typer.Option(False, "--no-color", help="Disable coloured output."),
 ) -> None:
     """Enable security features on repositories that lack them.

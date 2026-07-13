@@ -55,8 +55,24 @@ def _row(sig: RepoSignal, *, informational: bool = False) -> list[str]:
     info = [str(c.informational)] if informational else []
     if sig.signal is SignalType.SCORECARD:
         score = f"{sig.score:.1f}" if sig.score is not None else "—"
-        return [_link(sig.repo), score, str(c.critical), str(c.high), str(c.medium), str(c.low), *info]
-    return [_link(sig.repo), str(c.critical), str(c.high), str(c.medium), str(c.low), *info, str(c.total)]
+        return [
+            _link(sig.repo),
+            score,
+            str(c.critical),
+            str(c.high),
+            str(c.medium),
+            str(c.low),
+            *info,
+        ]
+    return [
+        _link(sig.repo),
+        str(c.critical),
+        str(c.high),
+        str(c.medium),
+        str(c.low),
+        *info,
+        str(c.total),
+    ]
 
 
 def _table(section: SignalSection, top_n: int | None = None) -> list[str]:
@@ -259,9 +275,7 @@ def render_org(
     for section in org.sections:
         parent_visible = visible(section.signal.category_key)
         if parent_visible:
-            parts.append(
-                render_section(section, excluded=excluded, top_n=top_n)
-            )
+            parts.append(render_section(section, excluded=excluded, top_n=top_n))
         # The Dependabot configuration-posture sub-tables normally nest beneath
         # the Dependabot signal heading as level-3 sub-sections. When the parent
         # signal is hidden they would otherwise become orphaned ### headings
@@ -280,13 +294,9 @@ def render_org(
             )
     if org.releases is not None and visible(org.releases.category.key):
         parts.append(
-            render_table_section(
-                org.releases, level=2, excluded=excluded, top_n=top_n
-            )
+            render_table_section(org.releases, level=2, excluded=excluded, top_n=top_n)
         )
-    if org.mutable_releases is not None and visible(
-        org.mutable_releases.category.key
-    ):
+    if org.mutable_releases is not None and visible(org.mutable_releases.category.key):
         parts.append(
             render_table_section(
                 org.mutable_releases, level=2, excluded=excluded, top_n=top_n
@@ -308,6 +318,5 @@ def render_org(
 
 def render_report(report: Report, *, top_n: int | None = None) -> str:
     return (
-        "\n\n".join(render_org(org, top_n=top_n) for org in report.orgs).rstrip()
-        + "\n"
+        "\n\n".join(render_org(org, top_n=top_n) for org in report.orgs).rstrip() + "\n"
     )

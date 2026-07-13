@@ -91,9 +91,7 @@ def _paths_match_keyword(paths: tuple[str, ...] | list[str], keyword: str) -> bo
     return any(kw in path.lower() for path in paths)
 
 
-def any_ruleset_matches(
-    rulesets: list[WorkflowRuleset], keyword: str
-) -> bool:
+def any_ruleset_matches(rulesets: list[WorkflowRuleset], keyword: str) -> bool:
     """Whether any active org ruleset requires a workflow matching ``keyword``.
 
     Organisation-level evidence for feature gating: the mere existence of an
@@ -101,8 +99,7 @@ def any_ruleset_matches(
     targets) proves the organisation runs the tool.
     """
     return any(
-        _paths_match_keyword(ruleset.workflow_paths, keyword)
-        for ruleset in rulesets
+        _paths_match_keyword(ruleset.workflow_paths, keyword) for ruleset in rulesets
     )
 
 

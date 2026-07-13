@@ -17,6 +17,7 @@ from github_security_report.client import (
     GitHubClient,
     NetworkError,
     _endpoint_diagnostics,
+    _https_endpoint,
     _parse_retry_after,
 )
 
@@ -856,3 +857,40 @@ async def test_repo_graph_batch_non_200_returns_defaults(client: GitHubClient) -
 async def test_repo_graph_batch_empty_names_no_request(client: GitHubClient) -> None:
     # No names means no HTTP call at all (respx is not even engaged here).
     assert await client.repo_graph_batch("o", []) == {}
+
+
+def test_https_endpoint_defaults_when_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GITHUB_API_URL", raising=False)
+    assert _https_endpoint("GITHUB_API_URL", API) == API
+
+
+def test_https_endpoint_accepts_https_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_API_URL", "https://ghe.example.com/api/v3")
+    assert _https_endpoint("GITHUB_API_URL", API) == "https://ghe.example.com/api/v3"
+
+
+def test_https_endpoint_rejects_insecure_override(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A non-HTTPS override must not be honoured: the token would otherwise be
+    # sent in plaintext. The built-in default is used and a warning is logged.
+    monkeypatch.setenv("GITHUB_API_URL", "http://attacker.example.com")
+    with caplog.at_level("WARNING"):
+        assert _https_endpoint("GITHUB_API_URL", API) == API
+    assert any("not an https" in r.message for r in caplog.records)
+
+
+def test_https_endpoint_normalises_whitespace_and_trailing_slash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Surrounding whitespace and a trailing slash are copy/paste artefacts, not
+    # a real override: they must be stripped before comparison and validation.
+    monkeypatch.setenv("GITHUB_API_URL", f"  {API}/  ")
+    assert _https_endpoint("GITHUB_API_URL", API) == API
+    monkeypatch.setenv("GITHUB_API_URL", "  https://ghe.example.com/api/v3/  ")
+    assert _https_endpoint("GITHUB_API_URL", API) == "https://ghe.example.com/api/v3"

@@ -56,9 +56,7 @@ class RemediationClient(Protocol):
         self, org: str, repo: str
     ) -> tuple[bool, str]: ...
 
-    async def enable_secret_scanning(
-        self, org: str, repo: str
-    ) -> tuple[bool, str]: ...
+    async def enable_secret_scanning(self, org: str, repo: str) -> tuple[bool, str]: ...
 
 
 # Actions a repository outcome can carry. "would enable" is the dry-run preview;
@@ -237,12 +235,8 @@ async def remediate_org(
                 outcomes.append(RepoOutcome(repo.name, _WOULD_ENABLE))
                 continue
             ok, note = await rem.enable(client, report.org, repo.name)
-            outcomes.append(
-                RepoOutcome(repo.name, _ENABLED if ok else _FAILED, note)
-            )
+            outcomes.append(RepoOutcome(repo.name, _ENABLED if ok else _FAILED, note))
         results.append(
-            CategoryRemediation(
-                category=category_meta(key), outcomes=tuple(outcomes)
-            )
+            CategoryRemediation(category=category_meta(key), outcomes=tuple(outcomes))
         )
     return results

@@ -12,8 +12,10 @@ See ``docs/BRIEF.md`` sections 9, 13 and ``docs/phase0-findings.md``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime as dt
 import logging
+import os
 import socket
 from dataclasses import replace
 from email.utils import parsedate_to_datetime
@@ -30,9 +32,47 @@ from github_security_report.models import (
 
 log = logging.getLogger(__name__)
 
-GITHUB_API = "https://api.github.com"
-GRAPHQL_API = "https://api.github.com/graphql"
-SCORECARD_API = "https://api.securityscorecards.dev"
+# Deployment endpoints. GitHub Actions exports GITHUB_API_URL and
+# GITHUB_GRAPHQL_URL (pointing at the enterprise host on GHES); honouring them
+# lets the tool run against GitHub Enterprise Server without code changes.
+# aislop-ignore-next-line ai-slop/hardcoded-url -- stable public API default, overridable via SCORECARD_API_URL
+_SCORECARD_DEFAULT = "https://api.securityscorecards.dev"
+
+
+def _https_endpoint(env_var: str, default: str) -> str:
+    """Resolve a token-bearing GitHub endpoint from the environment.
+
+    The authenticated client sends the GitHub token on every request, so an
+    overridden endpoint must be HTTPS or the token could be leaked in plaintext
+    or to an unexpected scheme. A non-HTTPS override is refused (the built-in
+    default is used instead) with a warning; an accepted non-default endpoint --
+    e.g. a GHES host -- is logged so the target is visible in the run output.
+    """
+    value = os.environ.get(env_var)
+    if value is None:
+        return default
+    # Normalise copy/paste artefacts (surrounding whitespace, trailing slash)
+    # before comparing or validating so a cosmetic variant is not mistaken for
+    # a genuine override or wrongly rejected by the scheme check.
+    value = value.strip().rstrip("/")
+    if not value or value == default:
+        return default
+    if not value.lower().startswith("https://"):
+        log.warning(
+            "%s=%r is not an https:// URL; ignoring the override and using %s "
+            "so the GitHub token is not sent to an insecure endpoint",
+            env_var,
+            value,
+            default,
+        )
+        return default
+    log.info("%s: using non-default endpoint %s", env_var, value)
+    return value
+
+
+GITHUB_API = _https_endpoint("GITHUB_API_URL", "https://api.github.com")
+GRAPHQL_API = _https_endpoint("GITHUB_GRAPHQL_URL", "https://api.github.com/graphql")
+SCORECARD_API = os.environ.get("SCORECARD_API_URL", _SCORECARD_DEFAULT)
 
 # org-bulk alert endpoints, keyed by signal family.
 BULK_KINDS = {
@@ -116,6 +156,7 @@ async def _endpoint_diagnostics(url: str) -> str:
         addr = f"unresolved ({detail})"
     return f"host={host} ip={addr} port={port}"
 
+
 _DEPENDABOT_ENABLED_QUERY = """
 query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
@@ -131,14 +172,9 @@ query($owner: String!, $name: String!) {
 # adding a SARIF-uploading tool needs no client change.
 _CODE_SCANNING_SIGNAL_TOOLS = tuple(CODE_SCANNING_TOOLS.values())
 
-# Batched per-repo prefetch. One aliased query fetches, for many repositories
-# at once: Dependabot-alerts enablement, the most-recent tag's commit date
-# (a tag's target is a Commit (lightweight) or a Tag object (annotated) whose
-# own target is the Commit -- both branches are read), the authoritative
-# latest release plus a window of recent releases with their immutability, and
-# the raw .github/dependabot.yml. This replaces the former per-repo
-# latest-release (REST), latest-tag (GraphQL), dependabot.yml
-# (REST) and Dependabot-enabled (GraphQL) round-trips.
+# Batched per-repo prefetch: one aliased query fetches Dependabot enablement,
+# the newest tag's commit date, latest/recent releases with immutability, and
+# the raw .github/dependabot.yml, replacing four per-repo round-trips.
 _REPO_GRAPH_FRAGMENT = """\
 fragment RepoData on Repository {
   hasVulnerabilityAlertsEnabled
@@ -189,10 +225,9 @@ def _parse_retry_after(value: str | None) -> float | None:
     if not value:
         return None
     value = value.strip()
-    try:
+    # Delta-seconds first; on ValueError fall through to HTTP-date parsing.
+    with contextlib.suppress(ValueError):
         return max(0.0, float(value))
-    except ValueError:
-        pass
     try:
         when = parsedate_to_datetime(value)
     except (TypeError, ValueError):
@@ -202,6 +237,12 @@ def _parse_retry_after(value: str | None) -> float | None:
     if when.tzinfo is None:
         when = when.replace(tzinfo=dt.timezone.utc)
     return max(0.0, (when - dt.datetime.now(dt.timezone.utc)).total_seconds())
+
+
+def _next_page_url(resp: httpx.Response) -> str | None:
+    """URL of the RFC 5988 ``next`` link header, or ``None`` on the last page."""
+    next_link = resp.links.get("next")
+    return next_link.get("url") if next_link else None
 
 
 def _tag_committed_date(tags: dict | None) -> dt.datetime | None:
@@ -416,11 +457,11 @@ class GitHubClient:
                         log.warning(
                             "external request to %s failed after %d attempt(s): "
                             "%s; signal degraded to unknown",
-                            url, attempt + 1, exc,
+                            url,
+                            attempt + 1,
+                            exc,
                         )
-                        return httpx.Response(
-                            503, request=httpx.Request(method, url)
-                        )
+                        return httpx.Response(503, request=httpx.Request(method, url))
                     diagnostics = await _endpoint_diagnostics(url)
                     raise NetworkError(
                         "Network error: the GitHub API is unreachable after "
@@ -432,9 +473,12 @@ class GitHubClient:
                         f"cause={exc!s}"
                     ) from exc
                 log.warning(
-                    "request to %s failed: %s; retrying in %.0fs "
-                    "(retry %d of %d)",
-                    url, exc, delay, attempt + 1, self._max_retries,
+                    "request to %s failed: %s; retrying in %.0fs (retry %d of %d)",
+                    url,
+                    exc,
+                    delay,
+                    attempt + 1,
+                    self._max_retries,
                 )
                 await asyncio.sleep(delay)
                 waited += delay
@@ -457,9 +501,7 @@ class GitHubClient:
             # still triggers a backoff (falling back to the exponential schedule
             # below) rather than being mistaken for a permission error.
             rate_limited = (
-                resp.status_code == 429
-                or retry_after is not None
-                or remaining == "0"
+                resp.status_code == 429 or retry_after is not None or remaining == "0"
             )
             delay = (
                 retry_after_secs
@@ -496,7 +538,7 @@ class GitHubClient:
             await resp.aclose()  # unread body would leak a pooled connection
             return status, []
         items = list(resp.json())
-        next_url = resp.links.get("next", {}).get("url")
+        next_url = _next_page_url(resp)
         await resp.aclose()  # release the connection once body/links are read
         while next_url:
             resp = await self._request("GET", next_url)
@@ -509,7 +551,7 @@ class GitHubClient:
                 await resp.aclose()
                 return resp.status_code, items
             items.extend(resp.json())
-            next_url = resp.links.get("next", {}).get("url")
+            next_url = _next_page_url(resp)
             await resp.aclose()
         return 200, items
 
@@ -557,9 +599,7 @@ class GitHubClient:
         sweep (403/404/5xx), which must never be reported as "clean".
         """
         path = BULK_KINDS[kind]
-        return await self._get_list(
-            f"{self._api_url}/orgs/{org}/{path}", state="open"
-        )
+        return await self._get_list(f"{self._api_url}/orgs/{org}/{path}", state="open")
 
     # ------------------------------------------------------------------ #
     # Per-repo enabled-probes
@@ -584,9 +624,7 @@ class GitHubClient:
         await resp.aclose()  # release the connection once the body is read
         return 200, has_analyses
 
-    async def code_scanning_tool_present(
-        self, org: str, repo: str, tool: str
-    ) -> bool:
+    async def code_scanning_tool_present(self, org: str, repo: str, tool: str) -> bool:
         """Whether ``tool`` has uploaded code-scanning analyses to this repo.
 
         The lightweight organisation-gating probe: any non-200 (disabled,
@@ -748,7 +786,9 @@ class GitHubClient:
             created_at=_parse_iso(raw.get("created_at")),
         )
 
-    async def repo_code_scanning_alerts(self, org: str, repo: str) -> tuple[int, list[dict]]:
+    async def repo_code_scanning_alerts(
+        self, org: str, repo: str
+    ) -> tuple[int, list[dict]]:
         """Open code-scanning alerts for one repo (status, alerts)."""
         return await self._get_list(
             f"{self._api_url}/repos/{org}/{repo}/code-scanning/alerts", state="open"
@@ -761,7 +801,9 @@ class GitHubClient:
         )
         return status, len(items)
 
-    async def repo_dependabot_alerts(self, org: str, repo: str) -> tuple[int, list[dict]]:
+    async def repo_dependabot_alerts(
+        self, org: str, repo: str
+    ) -> tuple[int, list[dict]]:
         """Open Dependabot alerts for one repo (status, alerts)."""
         return await self._get_list(
             f"{self._api_url}/repos/{org}/{repo}/dependabot/alerts", state="open"
@@ -790,9 +832,7 @@ class GitHubClient:
         await resp.aclose()  # release the connection once the body is read
         return bool(data.get("enabled"))
 
-    async def private_vulnerability_reporting(
-        self, org: str, repo: str
-    ) -> bool | None:
+    async def private_vulnerability_reporting(self, org: str, repo: str) -> bool | None:
         """Whether private vulnerability reporting is enabled (None = unknown).
 
         ``GET .../private-vulnerability-reporting`` returns ``{enabled}`` (200);
@@ -831,9 +871,7 @@ class GitHubClient:
         body = " ".join(resp.text[:200].split())
         return f"{resp.status_code} {body[:80]}".strip()
 
-    async def enable_dependabot_alerts(
-        self, org: str, repo: str
-    ) -> tuple[bool, str]:
+    async def enable_dependabot_alerts(self, org: str, repo: str) -> tuple[bool, str]:
         """Enable Dependabot vulnerability alerts. Returns ``(ok, note)``.
 
         ``PUT .../vulnerability-alerts`` is idempotent and returns ``204``; any
@@ -863,11 +901,7 @@ class GitHubClient:
             "PUT", f"{self._api_url}/repos/{org}/{repo}/automated-security-fixes"
         )
         fixed = resp.status_code == 204
-        fnote = (
-            ""
-            if fixed
-            else f"automated-security-fixes -> {self._write_note(resp)}"
-        )
+        fnote = "" if fixed else f"automated-security-fixes -> {self._write_note(resp)}"
         await resp.aclose()
         return fixed, fnote
 
@@ -916,9 +950,7 @@ class GitHubClient:
         await resp.aclose()
         return ok, note
 
-    async def enable_secret_scanning(
-        self, org: str, repo: str
-    ) -> tuple[bool, str]:
+    async def enable_secret_scanning(self, org: str, repo: str) -> tuple[bool, str]:
         """Enable secret scanning. Returns ``(ok, note)``.
 
         ``PATCH /repos/{o}/{r}`` with the repository's ``security_and_analysis``
@@ -953,7 +985,7 @@ class GitHubClient:
         if not names:
             return out
         aliases = "\n".join(
-            f'  r{i}: repository(owner: $owner, name: $n{i}) {{ ...RepoData }}'
+            f"  r{i}: repository(owner: $owner, name: $n{i}) {{ ...RepoData }}"
             for i in range(len(names))
         )
         var_decls = "".join(f", $n{i}: String!" for i in range(len(names)))
@@ -972,7 +1004,7 @@ class GitHubClient:
         if resp.status_code != 200:
             await resp.aclose()  # unread body would leak a pooled connection
             return out
-        data = (resp.json().get("data") or {})
+        data = resp.json().get("data") or {}
         await resp.aclose()  # release the connection once the body is read
         for i, name in enumerate(names):
             node = data.get(f"r{i}")

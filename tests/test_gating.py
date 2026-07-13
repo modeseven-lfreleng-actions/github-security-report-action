@@ -125,3 +125,27 @@ async def test_sample_is_bounded() -> None:
     await _gate(client, repos)
     probed = {name for name, _ in client.tool_probes}
     assert len(probed) <= gating.SAMPLE_SIZE
+
+
+async def test_sample_spans_later_repos() -> None:
+    # r49 is the last repo; a first-N (or tail-excluding) sample would miss it,
+    # but the endpoint-inclusive spread sample probes it and finds the tool.
+    client = GateClient(analyses={"r49": {"aislop"}})
+    repos = [_repo(f"r{i}") for i in range(50)]
+    results = await _gate(client, repos)
+    assert results[SignalType.AISLOP].supported
+    assert results[SignalType.AISLOP].evidence == "analyses on r49"
+
+
+def test_spread_sample_is_evenly_spaced_and_bounded() -> None:
+    repos = [_repo(f"r{i}") for i in range(50)]
+    sample = gating._spread_sample(repos, 10)
+    # Endpoint-inclusive spacing always spans the first and last repo.
+    assert [r.name for r in sample] == [
+        f"r{i}" for i in (0, 5, 11, 16, 22, 27, 33, 38, 44, 49)
+    ]
+    assert sample[0].name == "r0"
+    assert sample[-1].name == "r49"
+    # Fewer repos than the sample size returns them all unchanged.
+    assert gating._spread_sample(repos[:3], 10) == repos[:3]
+    assert gating._spread_sample(repos, 0) == []

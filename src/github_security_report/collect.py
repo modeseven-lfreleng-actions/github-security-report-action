@@ -68,9 +68,7 @@ class ClientProtocol(Protocol):
         """Return the code-scanning tools enabled on a repository."""
         raise NotImplementedError
 
-    async def code_scanning_tool_present(
-        self, org: str, repo: str, tool: str
-    ) -> bool:
+    async def code_scanning_tool_present(self, org: str, repo: str, tool: str) -> bool:
         """Whether ``tool`` has uploaded code-scanning analyses to the repo."""
         raise NotImplementedError
 
@@ -86,9 +84,7 @@ class ClientProtocol(Protocol):
         """Whether Dependabot automated security fixes are enabled."""
         raise NotImplementedError
 
-    async def private_vulnerability_reporting(
-        self, org: str, repo: str
-    ) -> bool | None:
+    async def private_vulnerability_reporting(self, org: str, repo: str) -> bool | None:
         """Whether private vulnerability reporting is enabled for a repository."""
         raise NotImplementedError
 
@@ -178,14 +174,14 @@ async def _facts_for_repo(
     async def no_scorecard() -> tuple[int, float | None]:
         return 404, None
 
-    (cs_status, cs_tools), secret_status, (scorecard_status, score) = (
-        await asyncio.gather(
-            client.code_scanning_tools(org, repo.name, probe_tools),
-            client.secret_scanning_status(org, repo.name),
-            client.scorecard_score(org, repo.name)
-            if probe_scorecard
-            else no_scorecard(),
-        )
+    (
+        (cs_status, cs_tools),
+        secret_status,
+        (scorecard_status, score),
+    ) = await asyncio.gather(
+        client.code_scanning_tools(org, repo.name, probe_tools),
+        client.secret_scanning_status(org, repo.name),
+        client.scorecard_score(org, repo.name) if probe_scorecard else no_scorecard(),
     )
     return RepoFacts(
         repo=repo,
@@ -301,10 +297,13 @@ async def collect_org(
     # Ruleset coverage degrades gracefully if the token cannot read org
     # rulesets (e.g. 403): repos then fall back to per-repo evidence.
     (
-        (cs_status, cs_alerts),
-        (dep_status, dep_alerts),
-        (secret_status, secret_alerts),
-    ), (rs_status, rs_details) = await asyncio.gather(
+        (
+            (cs_status, cs_alerts),
+            (dep_status, dep_alerts),
+            (secret_status, secret_alerts),
+        ),
+        (rs_status, rs_details),
+    ) = await asyncio.gather(
         asyncio.gather(
             client.org_bulk_alerts(org, "code-scanning"),
             client.org_bulk_alerts(org, "dependabot"),
@@ -364,9 +363,7 @@ async def collect_org(
             signal for signal, gate in gates.items() if not gate.supported
         )
     probe_tools = tuple(
-        tool
-        for signal, tool in CODE_SCANNING_TOOLS.items()
-        if signal not in skipped
+        tool for signal, tool in CODE_SCANNING_TOOLS.items() if signal not in skipped
     )
     probe_scorecard = SignalType.SCORECARD not in skipped
 
@@ -386,8 +383,14 @@ async def collect_org(
             await asyncio.gather(
                 *(
                     _facts_for_repo(
-                        client, org, repo, code_scanning, dependabot, secret,
-                        coverage.get(repo.name, set()), sweep_status,
+                        client,
+                        org,
+                        repo,
+                        code_scanning,
+                        dependabot,
+                        secret,
+                        coverage.get(repo.name, set()),
+                        sweep_status,
                         dependabot_enabled=graph.get(
                             repo.name, RepoGraphData()
                         ).dependabot_alerts_enabled,
@@ -404,8 +407,7 @@ async def collect_org(
     fail_severities = {
         signal: override
         for signal in SignalType
-        if (override := report_cfg.fail_severity_for(signal.category_key))
-        is not None
+        if (override := report_cfg.fail_severity_for(signal.category_key)) is not None
     }
     signals = [
         sig
@@ -436,7 +438,9 @@ async def collect_org(
             await asyncio.gather(
                 *(
                     _posture_for_repo(
-                        client, org, repo,
+                        client,
+                        org,
+                        repo,
                         dependabot_alerts=dependabot_on.get(repo.name),
                         graph=graph.get(repo.name, RepoGraphData()),
                     )
@@ -496,9 +500,10 @@ async def collect_repo(
     dependabot_alerts: list[dict] = []
     dependabot_alerts_status = 200
     if dependabot_on:
-        dependabot_alerts_status, dependabot_alerts = await client.repo_dependabot_alerts(
-            owner, repo_name
-        )
+        (
+            dependabot_alerts_status,
+            dependabot_alerts,
+        ) = await client.repo_dependabot_alerts(owner, repo_name)
     scorecard_status, score = await client.scorecard_score(owner, repo_name)
     # Ruleset coverage from the repo's effective branch rules (includes
     # inherited org rulesets); repo-scoped tokens can read this endpoint.

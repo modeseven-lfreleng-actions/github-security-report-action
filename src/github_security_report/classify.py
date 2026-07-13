@@ -37,9 +37,7 @@ from github_security_report.severity import Severity
 FailSeverities = Mapping[SignalType, Severity]
 
 
-def _cutoff(
-    signal: SignalType, fail_severities: FailSeverities | None
-) -> Severity:
+def _cutoff(signal: SignalType, fail_severities: FailSeverities | None) -> Severity:
     """The fail-severity cutoff for ``signal`` (config override or default)."""
     if fail_severities is not None and signal in fail_severities:
         return fail_severities[signal]
@@ -131,13 +129,19 @@ def _code_scanning_tool_signal(
         facts.code_scanning_status == 200 and tool_name in facts.code_scanning_tools
     )
     if not enabled:
-        detail = "code scanning disabled" if facts.code_scanning_status == 404 else f"{tool_name} not enabled"
+        detail = (
+            "code scanning disabled"
+            if facts.code_scanning_status == 404
+            else f"{tool_name} not enabled"
+        )
         return RepoSignal(repo, signal, RepoState.NAG, detail=detail)
     counts = count_code_scanning(facts.code_scanning_alerts, tool_name)
     # Enabled with no findings is only "clean" when the alert read succeeded;
     # an unreadable sweep (e.g. org-bulk 403/5xx) must not masquerade as clean.
     if counts.total == 0 and facts.code_scanning_alerts_status != 200:
-        return RepoSignal(repo, signal, RepoState.UNKNOWN, detail="alert data unavailable")
+        return RepoSignal(
+            repo, signal, RepoState.UNKNOWN, detail="alert data unavailable"
+        )
     # Only findings at or above the category's fail-severity cutoff make the
     # repo an offender; sub-threshold findings (e.g. informational) fold into
     # the clean count.
@@ -201,21 +205,34 @@ def classify_scorecard(
         # the code-scanning cutoff logic used elsewhere in this file.
         clean = facts.scorecard_score >= 10.0 and not counts.at_or_above(cutoff)
         state = RepoState.CLEAN if clean else RepoState.OFFENDER
-        return RepoSignal(repo, SignalType.SCORECARD, state, counts=counts, score=facts.scorecard_score)
+        return RepoSignal(
+            repo,
+            SignalType.SCORECARD,
+            state,
+            counts=counts,
+            score=facts.scorecard_score,
+        )
     if has_cs:
         if counts.total == 0 and facts.code_scanning_alerts_status != 200:
-            return RepoSignal(repo, SignalType.SCORECARD, RepoState.UNKNOWN, detail="alert data unavailable")
-        state = (
-            RepoState.OFFENDER if counts.at_or_above(cutoff) else RepoState.CLEAN
-        )
+            return RepoSignal(
+                repo,
+                SignalType.SCORECARD,
+                RepoState.UNKNOWN,
+                detail="alert data unavailable",
+            )
+        state = RepoState.OFFENDER if counts.at_or_above(cutoff) else RepoState.CLEAN
         return RepoSignal(repo, SignalType.SCORECARD, state, counts=counts)
     # An indeterminate external request (a 403 forbidden/blocked, a 5xx
     # including the synthetic 503 a transport failure produces, or a forbidden
     # code-scanning probe) is unknown, not a definitive nag. Only a clean 404
     # with no code-scanning Scorecard data means "no results".
     if facts.code_scanning_status == 403 or facts.scorecard_status not in (200, 404):
-        return RepoSignal(repo, SignalType.SCORECARD, RepoState.UNKNOWN, detail="indeterminate")
-    return RepoSignal(repo, SignalType.SCORECARD, RepoState.NAG, detail="no Scorecard results")
+        return RepoSignal(
+            repo, SignalType.SCORECARD, RepoState.UNKNOWN, detail="indeterminate"
+        )
+    return RepoSignal(
+        repo, SignalType.SCORECARD, RepoState.NAG, detail="no Scorecard results"
+    )
 
 
 def classify_secret_scanning(
@@ -226,9 +243,19 @@ def classify_secret_scanning(
     # other classifiers (they are dispatched positionally) and is unused here.
     repo = facts.repo
     if facts.secret_scanning_status == 403:
-        return RepoSignal(repo, SignalType.SECRET_SCANNING, RepoState.UNKNOWN, detail="insufficient permission")
+        return RepoSignal(
+            repo,
+            SignalType.SECRET_SCANNING,
+            RepoState.UNKNOWN,
+            detail="insufficient permission",
+        )
     if facts.secret_scanning_status == 404:
-        return RepoSignal(repo, SignalType.SECRET_SCANNING, RepoState.NAG, detail="secret scanning disabled")
+        return RepoSignal(
+            repo,
+            SignalType.SECRET_SCANNING,
+            RepoState.NAG,
+            detail="secret scanning disabled",
+        )
     # Flat open count; stored as HIGH so ranking (more == worse) works and the
     # repo-mode gate treats leaked secrets as serious, without conflating them
     # with CRITICAL code findings (which would make --fail-threshold critical
@@ -238,12 +265,19 @@ def classify_secret_scanning(
     # Positive evidence of leaked secrets is actionable even when the read was
     # incomplete (a later page failed) or the enablement probe was indeterminate.
     if facts.secret_scanning_open:
-        return RepoSignal(repo, SignalType.SECRET_SCANNING, RepoState.OFFENDER, counts=counts)
+        return RepoSignal(
+            repo, SignalType.SECRET_SCANNING, RepoState.OFFENDER, counts=counts
+        )
     # A zero count is only "clean" when both the enablement probe and the
     # open-count read succeeded; an indeterminate status (5xx) or an unreadable
     # sweep cannot confirm the repo is clean.
     if facts.secret_scanning_status != 200 or facts.secret_scanning_open_status != 200:
-        return RepoSignal(repo, SignalType.SECRET_SCANNING, RepoState.UNKNOWN, detail="alert data unavailable")
+        return RepoSignal(
+            repo,
+            SignalType.SECRET_SCANNING,
+            RepoState.UNKNOWN,
+            detail="alert data unavailable",
+        )
     return RepoSignal(repo, SignalType.SECRET_SCANNING, RepoState.CLEAN, counts=counts)
 
 
@@ -252,13 +286,25 @@ def classify_dependabot(
 ) -> RepoSignal:
     repo = facts.repo
     if facts.dependabot_enabled is None:
-        return RepoSignal(repo, SignalType.DEPENDABOT, RepoState.UNKNOWN, detail="indeterminate")
+        return RepoSignal(
+            repo, SignalType.DEPENDABOT, RepoState.UNKNOWN, detail="indeterminate"
+        )
     if facts.dependabot_enabled is False:
-        return RepoSignal(repo, SignalType.DEPENDABOT, RepoState.NAG, detail="Dependabot alerts disabled")
+        return RepoSignal(
+            repo,
+            SignalType.DEPENDABOT,
+            RepoState.NAG,
+            detail="Dependabot alerts disabled",
+        )
     counts = count_dependabot(facts.dependabot_alerts)
     # Enabled with no alerts is only "clean" when the alert read succeeded.
     if counts.total == 0 and facts.dependabot_alerts_status != 200:
-        return RepoSignal(repo, SignalType.DEPENDABOT, RepoState.UNKNOWN, detail="alert data unavailable")
+        return RepoSignal(
+            repo,
+            SignalType.DEPENDABOT,
+            RepoState.UNKNOWN,
+            detail="alert data unavailable",
+        )
     failing = counts.at_or_above(_cutoff(SignalType.DEPENDABOT, fail_severities))
     state = RepoState.OFFENDER if failing else RepoState.CLEAN
     return RepoSignal(repo, SignalType.DEPENDABOT, state, counts=counts)

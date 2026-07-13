@@ -416,12 +416,21 @@ The tool is published to PyPI and runs with `uvx`. Inside a Git checkout with a
 `upstream` remote, then `origin`) and prints a Rich table report:
 
 ```bash
-export GITHUB_TOKEN=ghp_your_token
+export GITHUB_TOKEN="your-token"
 uvx github-security-report report
 
 # Or org mode locally with a PAT:
 uvx github-security-report report --org lfreleng-actions
 ```
+
+### GitHub Enterprise Server
+
+The API endpoints honour the standard environment variables that GitHub
+Actions exports, so the tool works against GitHub Enterprise Server
+without code changes: set `GITHUB_API_URL` and `GITHUB_GRAPHQL_URL` to
+your enterprise endpoints (Actions sets these automatically on GHES
+runners). `SCORECARD_API_URL` overrides the external OpenSSF Scorecard
+API in the same way.
 
 ## Remediation
 
