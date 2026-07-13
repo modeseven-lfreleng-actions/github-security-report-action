@@ -18,14 +18,20 @@ from collections import defaultdict
 from collections.abc import Mapping
 from typing import Protocol
 
-from github_security_report import posture, rulesets, scope
+from github_security_report import gating, posture, rulesets, scope
 from github_security_report.classify import RepoFacts, classify_repo
 from github_security_report.config import (
     DEFAULT_RULESET_WORKFLOWS,
     OrgConfig,
     ReportConfig,
 )
-from github_security_report.models import Repo, RepoGraphData, RepoSignal, SignalType
+from github_security_report.models import (
+    CODE_SCANNING_TOOLS,
+    Repo,
+    RepoGraphData,
+    RepoSignal,
+    SignalType,
+)
 from github_security_report.posture import RepoPosture
 from github_security_report.report import OrgReport, build_org_report
 
@@ -56,8 +62,16 @@ class ClientProtocol(Protocol):
         """Fetch the organisation's workflow rulesets."""
         raise NotImplementedError
 
-    async def code_scanning_tools(self, org: str, repo: str) -> tuple[int, set[str]]:
+    async def code_scanning_tools(
+        self, org: str, repo: str, tools: tuple[str, ...] | None = None
+    ) -> tuple[int, set[str]]:
         """Return the code-scanning tools enabled on a repository."""
+        raise NotImplementedError
+
+    async def code_scanning_tool_present(
+        self, org: str, repo: str, tool: str
+    ) -> bool:
+        """Whether ``tool`` has uploaded code-scanning analyses to the repo."""
         raise NotImplementedError
 
     async def secret_scanning_status(self, org: str, repo: str) -> int:
@@ -92,7 +106,9 @@ class RepoClientProtocol(Protocol):
         """Fetch a single repository, or None when it is absent."""
         raise NotImplementedError
 
-    async def code_scanning_tools(self, org: str, repo: str) -> tuple[int, set[str]]:
+    async def code_scanning_tools(
+        self, org: str, repo: str, tools: tuple[str, ...] | None = None
+    ) -> tuple[int, set[str]]:
         """Return the code-scanning tools enabled on a repository."""
         raise NotImplementedError
 
@@ -148,16 +164,27 @@ async def _facts_for_repo(
     sweep_status: dict[str, int],
     *,
     dependabot_enabled: bool | None,
+    probe_tools: tuple[str, ...],
+    probe_scorecard: bool,
 ) -> RepoFacts:
     # These per-repo probes are independent; gather them so each repo's reads
     # overlap. Real HTTP concurrency stays bounded by the client semaphore.
     # ``dependabot_enabled`` comes from the batched GraphQL prefetch, so it is
-    # passed in rather than re-probed here.
+    # passed in rather than re-probed here. ``probe_tools`` names the
+    # code-scanning tools worth probing (feature gating removes unsupported
+    # ones), and ``probe_scorecard`` skips the external Scorecard read when the
+    # signal is gated out -- the facts then default to "no score" and the
+    # skipped classifier never reads them.
+    async def no_scorecard() -> tuple[int, float | None]:
+        return 404, None
+
     (cs_status, cs_tools), secret_status, (scorecard_status, score) = (
         await asyncio.gather(
-            client.code_scanning_tools(org, repo.name),
+            client.code_scanning_tools(org, repo.name, probe_tools),
             client.secret_scanning_status(org, repo.name),
-            client.scorecard_score(org, repo.name),
+            client.scorecard_score(org, repo.name)
+            if probe_scorecard
+            else no_scorecard(),
         )
     )
     return RepoFacts(
@@ -318,6 +345,31 @@ async def collect_org(
         for repo in in_scope
     }
 
+    # Organisation feature gating: decide, from evidence already in hand plus a
+    # bounded sample of analyses probes, which workflow-driven signals this org
+    # supports at all. Unsupported signals are skipped -- not probed per repo,
+    # not classified -- and their sections render a single skip line pointing
+    # at the setup guide instead of nagging every repository.
+    skipped: frozenset[SignalType] = frozenset()
+    if report_cfg.gating:
+        gates = await gating.gate_signals(
+            client,
+            org,
+            in_scope,
+            workflow_rulesets=workflow_rulesets,
+            code_scanning_alerts=cs_alerts,
+            ruleset_workflows=report_cfg.ruleset_workflows,
+        )
+        skipped = frozenset(
+            signal for signal, gate in gates.items() if not gate.supported
+        )
+    probe_tools = tuple(
+        tool
+        for signal, tool in CODE_SCANNING_TOOLS.items()
+        if signal not in skipped
+    )
+    probe_scorecard = SignalType.SCORECARD not in skipped
+
     # One batched GraphQL prefetch per ``_GRAPH_BATCH`` repositories gathers the
     # Dependabot-enabled flag, release immutability, latest tag/release and
     # ``dependabot.yml`` for the whole org in a few requests instead of several
@@ -339,6 +391,8 @@ async def collect_org(
                         dependabot_enabled=graph.get(
                             repo.name, RepoGraphData()
                         ).dependabot_alerts_enabled,
+                        probe_tools=probe_tools,
+                        probe_scorecard=probe_scorecard,
                     )
                     for repo in batch
                 )
@@ -356,7 +410,7 @@ async def collect_org(
     signals = [
         sig
         for repo_facts in facts
-        for sig in classify_repo(repo_facts, fail_severities)
+        for sig in classify_repo(repo_facts, fail_severities, skip=skipped)
     ]
     report = build_org_report(
         org,
@@ -365,6 +419,7 @@ async def collect_org(
         generated_at=generated_at,
         partial=repos_status != 200,
         excluded_repos=excluded_repos,
+        skipped_signals=skipped,
     )
 
     # Extra reporting categories (outside the four-state model): Dependabot

@@ -54,6 +54,27 @@ def test_payload_enforces_slack_block_limit() -> None:
     assert "truncated" in blocks[-1]["elements"][0]["text"]
 
 
+def test_skipped_section_renders_single_skip_line() -> None:
+    # A gated-out signal contributes one block: its heading plus the skip line
+    # linking the setup guide -- no fenced table and no summary footer.
+    org = report.build_org_report(
+        "lfreleng-actions",
+        [],
+        repo_count=1,
+        generated_at=WHEN,
+        skipped_signals={SignalType.AISLOP},
+    )
+    blocks = slack.render_org_blocks(org, top_n=10, pages_url=None)
+    text = next(
+        b["text"]["text"]
+        for b in blocks
+        if "AI Slop Analysis" in b.get("text", {}).get("text", "")
+    )
+    assert report.SKIP_MESSAGE in text
+    assert report.ORG_SETUP_DOC_URL in text
+    assert "```" not in text  # no fixed-width table
+
+
 def test_informational_column_in_slack_when_present() -> None:
     # Slack uses single-letter severity headers; the sub-low Info column is "I"
     # and appears only when a table carries note-level findings.

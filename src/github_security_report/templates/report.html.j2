@@ -60,6 +60,9 @@
   {% endif %}
 {%- endmacro -%}
 {%- macro render_table(item) -%}
+  {% if item.skipped %}
+  <p class="note kind-excluded"><span aria-hidden="true">⏩</span> {{ item.skip_message }} — <a href="{{ item.skip_url }}">setup guide ↗</a></p>
+  {% else %}
   {% if item.rows %}
   <table class="dt-enabled">
     <thead>
@@ -84,6 +87,7 @@
   {{ render_meta(item) }}
   {{ render_summary(item.summary) }}
   {% if not item.rows and not item.summary %}<p class="note">No data available.</p>{% endif %}
+  {% endif %}
 {%- endmacro -%}
 <body>
   <div class="container">

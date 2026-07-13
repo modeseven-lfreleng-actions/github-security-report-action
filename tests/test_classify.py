@@ -69,6 +69,51 @@ class TestCodeScanningPartition:
         # CodeQL not in tools -> nag.
         assert _by_signal(facts)[SignalType.CODEQL].state is RepoState.NAG
 
+    def test_aislop_uses_sarif_severity_fallback(self) -> None:
+        # aislop mirrors zizmor: SARIF-level-only severities, LOW fail cutoff
+        # (so even a note-level finding marks the repo an offender).
+        facts = RepoFacts(
+            repo=_repo("test-node-project"),
+            code_scanning_status=200,
+            code_scanning_tools={"aislop"},
+            code_scanning_alerts=[
+                _cs_alert("aislop", None, "warning"),
+                _cs_alert("aislop", None, "note"),
+            ],
+        )
+        aislop = _by_signal(facts)[SignalType.AISLOP]
+        assert aislop.state is RepoState.OFFENDER
+        assert aislop.counts.medium == 1  # warning -> medium
+        assert aislop.counts.low == 1  # note -> low
+
+    def test_aislop_enabled_and_clean(self) -> None:
+        facts = RepoFacts(
+            repo=_repo(),
+            code_scanning_status=200,
+            code_scanning_tools={"aislop"},
+        )
+        assert _by_signal(facts)[SignalType.AISLOP].state is RepoState.CLEAN
+
+    def test_aislop_covered_by_ruleset_is_not_nagged(self) -> None:
+        # An org ruleset requiring the aislop workflow proves the tool runs
+        # even when the repo has no analyses of its own.
+        facts = RepoFacts(
+            repo=_repo(),
+            code_scanning_status=200,
+            ruleset_signals={"aislop"},
+        )
+        assert _by_signal(facts)[SignalType.AISLOP].state is RepoState.CLEAN
+
+    def test_classify_repo_skips_gated_out_signals(self) -> None:
+        facts = RepoFacts(repo=_repo(), code_scanning_status=200)
+        signals = classify.classify_repo(
+            facts, skip=frozenset({SignalType.AISLOP, SignalType.SCORECARD})
+        )
+        produced = {s.signal for s in signals}
+        assert SignalType.AISLOP not in produced
+        assert SignalType.SCORECARD not in produced
+        assert SignalType.CODEQL in produced
+
 
 class TestEnabledProbes:
     def test_code_scanning_disabled_is_nag(self) -> None:

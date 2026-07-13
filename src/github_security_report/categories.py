@@ -31,6 +31,7 @@ class CategoryKey(str, Enum):
     CODEQL = "codeql"
     SCORECARD = "scorecard"
     ZIZMOR = "zizmor"
+    AISLOP = "aislop"
     DEPENDABOT_ALERTS = "dependabot_alerts"
     SECRET_SCANNING = "secret_scanning"
     DEPENDABOT_ALERTS_ENABLED = "dependabot_alerts_enabled"
@@ -108,6 +109,21 @@ _CATEGORIES: dict[CategoryKey, CategoryMeta] = {
         # zizmor emits its Low findings at SARIF level "note", which
         # normalises to LOW (see severity.py), so any zizmor finding fails --
         # matching the ruleset-enforced PR gate that blocks on note-and-above.
+        fail_severity=Severity.LOW,
+    ),
+    CategoryKey.AISLOP: CategoryMeta(
+        key=CategoryKey.AISLOP,
+        title="AI Slop Analysis",
+        pass_label="Clean",
+        fail_label=None,
+        url="https://github.com/scanaislop/aislop",
+        description=(
+            "aislop AI-slop / code-quality findings, ranked worst-first by "
+            "severity."
+        ),
+        # aislop, like zizmor, populates only the SARIF level axis
+        # (error/warning/note); "note" normalises to LOW (see severity.py), so
+        # any aislop finding fails -- matching the ruleset-enforced PR gate.
         fail_severity=Severity.LOW,
     ),
     CategoryKey.DEPENDABOT_ALERTS: CategoryMeta(

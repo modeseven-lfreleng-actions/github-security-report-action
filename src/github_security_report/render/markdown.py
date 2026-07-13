@@ -17,6 +17,8 @@ from collections.abc import Callable, Mapping, Sequence
 from github_security_report.categories import CategoryKey
 from github_security_report.models import Repo, RepoSignal, SignalType
 from github_security_report.report import (
+    ORG_SETUP_DOC_URL,
+    SKIP_MESSAGE,
     SUMMARY_EMOJI,
     OrgReport,
     Report,
@@ -170,6 +172,15 @@ def render_section(
 ) -> str:
     meta = section.signal.meta
     lines = [f"## {meta.title}", ""]
+    if section.skipped:
+        # Feature gating found no organisation support: a single skip line
+        # with a pointer at the setup guide, instead of a table and footer.
+        lines.append(
+            f"{SUMMARY_EMOJI['excluded']} {SKIP_MESSAGE} — see the "
+            f"[organisation scan setup guide]({ORG_SETUP_DOC_URL})."
+        )
+        lines.append("")
+        return "\n".join(lines).rstrip() + "\n"
     if section.offenders:
         lines.extend(_table(section, top_n))
         lines.append("")

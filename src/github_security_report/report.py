@@ -11,7 +11,7 @@ repos excluded), and an unknown count. See ``docs/BRIEF.md`` sections 4-6, 11.
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Sequence
+from collections.abc import Sequence, Set
 from dataclasses import dataclass, field
 from typing import TypeVar
 
@@ -26,13 +26,24 @@ from github_security_report.models import (
     rank_offenders,
 )
 
-# Render order for the five sections.
+# Render order for the six sections.
 SIGNAL_ORDER: tuple[SignalType, ...] = (
     SignalType.CODEQL,
     SignalType.SCORECARD,
     SignalType.ZIZMOR,
+    SignalType.AISLOP,
     SignalType.DEPENDABOT,
     SignalType.SECRET_SCANNING,
+)
+
+# Wording and pointer for a feature-gated (skipped) section, shared by every
+# render surface so the single skip line reads identically everywhere. The URL
+# points at the organisation onboarding guide describing the workflows an org
+# needs before the workflow-driven signals produce data.
+SKIP_MESSAGE = "Skipping feature: organisation support missing"
+ORG_SETUP_DOC_URL = (
+    "https://github.com/lfreleng-actions/github-security-report-action/"
+    "blob/main/docs/org-scan-setup.md"
 )
 
 
@@ -45,6 +56,11 @@ class SignalSection:
     clean_count: int = 0
     nag_repos: list[Repo] = field(default_factory=list)
     unknown_count: int = 0
+    # True when organisation feature gating found no support for this signal's
+    # tooling (no ruleset, alerts or analyses), so no telemetry was gathered.
+    # A skipped section renders as a single "Skipping feature" line with a
+    # pointer to the org setup guide instead of a table/footers.
+    skipped: bool = False
 
     def top(self, n: int) -> list[RepoSignal]:
         """The worst N offenders (used for the Slack digest only)."""
@@ -324,8 +340,14 @@ def build_org_report(
     generated_at: dt.datetime | None = None,
     partial: bool = False,
     excluded_repos: list[Repo] | None = None,
+    skipped_signals: Set[SignalType] = frozenset(),
 ) -> OrgReport:
-    """Assemble an :class:`OrgReport` from a flat list of classified signals."""
+    """Assemble an :class:`OrgReport` from a flat list of classified signals.
+
+    ``skipped_signals`` marks sections whose telemetry was never gathered
+    because organisation feature gating found no supporting workflows; such a
+    section renders as a single skip line on every surface.
+    """
     when = generated_at or dt.datetime.now(dt.timezone.utc)
     by_signal: dict[SignalType, list[RepoSignal]] = {s: [] for s in SIGNAL_ORDER}
     for sig in repo_signals:
@@ -346,6 +368,7 @@ def build_org_report(
                 clean_count=sum(1 for s in results if s.state is RepoState.CLEAN),
                 nag_repos=sorted(nag, key=lambda r: r.name),
                 unknown_count=sum(1 for s in results if s.state is RepoState.UNKNOWN),
+                skipped=signal in skipped_signals,
             )
         )
     return OrgReport(

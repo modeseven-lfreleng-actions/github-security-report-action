@@ -19,9 +19,11 @@ from rich.table import Table
 
 from github_security_report.categories import CategoryKey
 from github_security_report.models import Repo, RepoSignal, SignalType
-from github_security_report.render import markdown
 from github_security_report.remediate import CategoryRemediation
+from github_security_report.render import markdown
 from github_security_report.report import (
+    ORG_SETUP_DOC_URL,
+    SKIP_MESSAGE,
     SUMMARY_EMOJI,
     OrgReport,
     SignalSection,
@@ -127,6 +129,16 @@ def render_section(
     excluded: Sequence[Repo] = (),
     top_n: int | None = None,
 ) -> None:
+    if section.skipped:
+        # Feature gating found no organisation support: one line, no table, no
+        # footer -- plus a dim pointer at the setup guide.
+        console.print(f"[bold]{section.signal.heading}[/bold]")
+        console.print(
+            f"  [blue]{SUMMARY_EMOJI['excluded']} {SKIP_MESSAGE}[/blue]"
+        )
+        console.print(f"  [dim]Setup guide: {ORG_SETUP_DOC_URL}[/dim]")
+        console.print()
+        return
     offenders, hidden_offenders = truncate(section.offenders, top_n)
     if offenders:
         informational = section_shows_informational(offenders)

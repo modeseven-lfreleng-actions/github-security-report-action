@@ -78,6 +78,22 @@ def test_informational_column_absent_without_info() -> None:
     assert "Info" not in out
 
 
+def test_skipped_section_renders_single_skip_line() -> None:
+    # A gated-out signal shows only its heading, the skip line, and the
+    # setup-guide pointer -- never a table, footer or nag list.
+    org = report.build_org_report(
+        "lfreleng-actions",
+        [],
+        repo_count=1,
+        generated_at=WHEN,
+        skipped_signals={SignalType.AISLOP},
+    )
+    out = _render(org, width=200)
+    assert "AI Slop Analysis" in out
+    assert report.SKIP_MESSAGE in out
+    assert report.ORG_SETUP_DOC_URL in out
+
+
 def test_clean_nag_unknown_notes() -> None:
     signals = [
         RepoSignal(_repo("clean"), SignalType.CODEQL, RepoState.CLEAN),

@@ -154,6 +154,24 @@ class TestBuildConfig:
         org = config.build_config(data).organizations[0]
         assert org.releases_exclude == ("internal-a", "internal-b")
 
+    def test_gating_default_and_override(self) -> None:
+        # Organisation feature gating defaults on; a per-org report block can
+        # switch it off (always probing every workflow-driven signal).
+        assert config.build_config(MINIMAL).report.gating is True
+        data = {
+            "organizations": [
+                {"name": "o", "report": {"gating": False}},
+            ],
+        }
+        org = config.build_config(data).organizations[0]
+        assert org.report.gating is False
+
+    def test_default_ruleset_workflows_include_aislop(self) -> None:
+        # The built-in ruleset keyword map covers both workflow-gated scanners.
+        workflows = config.build_config(MINIMAL).report.ruleset_workflows
+        assert workflows["zizmor"] == "zizmor"
+        assert workflows["aislop"] == "aislop"
+
     def test_rejects_negative_repo_min_age_days(self) -> None:
         with pytest.raises(ConfigError):
             config.build_config(
