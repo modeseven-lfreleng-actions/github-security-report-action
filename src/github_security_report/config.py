@@ -177,9 +177,7 @@ class ReportDay:
     never: bool = False
     days: frozenset[str] = field(default_factory=frozenset)
 
-    def should_notify(
-        self, *, now: dt.date | None = None, force: bool = False
-    ) -> bool:
+    def should_notify(self, *, now: dt.date | None = None, force: bool = False) -> bool:
         if force or self.always:
             return True
         if self.never:
@@ -191,7 +189,9 @@ class ReportDay:
 @dataclass(frozen=True)
 class SlackConfig:
     channel: str = ""
-    report_day: ReportDay = field(default_factory=lambda: ReportDay(days=frozenset({"tuesday"})))
+    report_day: ReportDay = field(
+        default_factory=lambda: ReportDay(days=frozenset({"tuesday"}))
+    )
 
 
 # Default mapping of signal value -> required-workflow path keyword. A repo
@@ -346,9 +346,7 @@ def parse_report_day(value: str | list[str] | None) -> ReportDay:
         return ReportDay(never=True)
     for day in normalised:
         if day in {"always", "never"}:
-            raise ConfigError(
-                f"'{day}' cannot be combined with weekdays in report_day"
-            )
+            raise ConfigError(f"'{day}' cannot be combined with weekdays in report_day")
         if day not in WEEKDAYS:
             raise ConfigError(f"invalid report_day value: {day!r}")
     if not normalised:
@@ -381,7 +379,8 @@ def _report_from(data: dict, base: ReportConfig) -> ReportConfig:
         **{
             k: v
             for k, v in data.items()
-            if k in {
+            if k
+            in {
                 "top_n",
                 "top_n_report",
                 "top_n_cli",
@@ -435,9 +434,7 @@ def _categories_from(
             # is below the security-severity scale from_name covers.
             name = raw["fail_severity"]
             fail_severity = (
-                Severity.INFORMATIONAL
-                if name == "informational"
-                else from_name(name)
+                Severity.INFORMATIONAL if name == "informational" else from_name(name)
             )
         merged[key] = CategoryToggle(
             enabled=raw.get("enabled", current.enabled),
@@ -511,9 +508,7 @@ def build_config(data: dict) -> Config:
                 report=_report_from(raw.get("report", {}), global_report),
             )
         )
-    return Config(
-        organizations=tuple(orgs), slack=global_slack, report=global_report
-    )
+    return Config(organizations=tuple(orgs), slack=global_slack, report=global_report)
 
 
 def loads(raw: str) -> Config:

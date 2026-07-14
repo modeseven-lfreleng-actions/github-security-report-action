@@ -34,7 +34,12 @@ from github_security_report.report import (
     truncate,
 )
 
-_SEVERITY_STYLE = {"critical": "bold red", "high": "red", "medium": "yellow", "low": "dim"}
+_SEVERITY_STYLE = {
+    "critical": "bold red",
+    "high": "red",
+    "medium": "yellow",
+    "low": "dim",
+}
 
 # The sub-low Informational column (shown only when a table carries note-level
 # findings) is the least urgent, so it is dimmed like the Low column.
@@ -117,8 +122,7 @@ def _render_summary(
         if label and line.names:
             style = _SUMMARY_STYLE[line.kind]
             console.print(
-                f"  [{style}]{label}:[/{style}] "
-                f"{_truncated_names(line.names, top_n)}"
+                f"  [{style}]{label}:[/{style}] {_truncated_names(line.names, top_n)}"
             )
 
 
@@ -133,16 +137,16 @@ def render_section(
         # Feature gating found no organisation support: one line, no table, no
         # footer -- plus a dim pointer at the setup guide.
         console.print(f"[bold]{section.signal.heading}[/bold]")
-        console.print(
-            f"  [blue]{SUMMARY_EMOJI['excluded']} {SKIP_MESSAGE}[/blue]"
-        )
+        console.print(f"  [blue]{SUMMARY_EMOJI['excluded']} {SKIP_MESSAGE}[/blue]")
         console.print(f"  [dim]Setup guide: {ORG_SETUP_DOC_URL}[/dim]")
         console.print()
         return
     offenders, hidden_offenders = truncate(section.offenders, top_n)
     if offenders:
         informational = section_shows_informational(offenders)
-        table = Table(title=section.signal.heading, title_justify="left", title_style="bold")
+        table = Table(
+            title=section.signal.heading, title_justify="left", title_style="bold"
+        )
         _add_columns(table, section.signal, informational=informational)
         for sig in offenders:
             table.add_row(*_row(sig, informational=informational))
@@ -194,7 +198,9 @@ def render_table_section(
     if not inline and rows:
         table = Table(title_justify="left", title_style="bold")
         for i, col in enumerate(section.columns):
-            table.add_column(col, overflow="fold", justify="left" if i == 0 else "right")
+            table.add_column(
+                col, overflow="fold", justify="left" if i == 0 else "right"
+            )
         for row in rows:
             table.add_row(row.repo.name, *row.cells)
         console.print(table)
@@ -239,9 +245,7 @@ def render_org(
         )
     for section in org.sections:
         if visible(section.signal.category_key):
-            render_section(
-                section, console, excluded=org.excluded_repos, top_n=top_n
-            )
+            render_section(section, console, excluded=org.excluded_repos, top_n=top_n)
         if section.signal is SignalType.DEPENDABOT:
             for table in org.dependabot_tables:
                 if visible(table.category.key):
@@ -252,9 +256,7 @@ def render_org(
         render_table_section(
             org.releases, console, excluded=org.excluded_repos, top_n=top_n
         )
-    if org.mutable_releases is not None and visible(
-        org.mutable_releases.category.key
-    ):
+    if org.mutable_releases is not None and visible(org.mutable_releases.category.key):
         render_table_section(
             org.mutable_releases, console, excluded=org.excluded_repos, top_n=top_n
         )
@@ -339,9 +341,7 @@ def render_remediation(
         console.print()
 
     if apply:
-        console.print(
-            f"[bold]Summary:[/bold] {changed} enabled, {failed} failed."
-        )
+        console.print(f"[bold]Summary:[/bold] {changed} enabled, {failed} failed.")
     else:
         console.print(
             f"[bold]Summary:[/bold] {planned} to enable (dry run). Re-run with "

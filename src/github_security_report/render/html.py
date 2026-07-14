@@ -38,8 +38,12 @@ DATATABLES_VERSION = "9.0.3"
 # verifies the fetched bytes against these, so a compromised/substituted CDN
 # asset is rejected. Regenerate if DATATABLES_VERSION changes, e.g.:
 #   curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A
-DATATABLES_CSS_SRI = "sha384-xnK68E/OAsSGcbvbeWEOyhjix2K7rBxt8Eytj/Ow9zuPG7WwFGGqMPQ8SbexlsL0"
-DATATABLES_JS_SRI = "sha384-JYQd44jQWQbU+FdjWIUlbjzENGRHPdOQcj7dAgjJEvSyt2js5lE85kaPOdC53JVu"
+DATATABLES_CSS_SRI = (
+    "sha384-xnK68E/OAsSGcbvbeWEOyhjix2K7rBxt8Eytj/Ow9zuPG7WwFGGqMPQ8SbexlsL0"
+)
+DATATABLES_JS_SRI = (
+    "sha384-JYQd44jQWQbU+FdjWIUlbjzENGRHPdOQcj7dAgjJEvSyt2js5lE85kaPOdC53JVu"
+)
 
 _env = Environment(
     loader=PackageLoader("github_security_report", "templates"),
@@ -171,9 +175,7 @@ def _section_context(
     # A trailing totals row sums the additive severity columns across the shown
     # rows; secret scanning has no such columns, so it gets none.
     total_cells = (
-        markdown.total_row_cells(
-            section.signal, offenders, informational=informational
-        )
+        markdown.total_row_cells(section.signal, offenders, informational=informational)
         if section.signal.uses_severity_columns and offenders
         else None
     )
@@ -254,8 +256,7 @@ def render_org_html(
             ),
             mutable_releases=(
                 _table_context(org.mutable_releases, excluded=excluded, top_n=top_n)
-                if org.mutable_releases
-                and visible(org.mutable_releases.category.key)
+                if org.mutable_releases and visible(org.mutable_releases.category.key)
                 else None
             ),
             private_vulnerability_reporting=(

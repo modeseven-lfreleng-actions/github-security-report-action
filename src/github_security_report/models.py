@@ -175,9 +175,7 @@ class SeverityCounts:
 
     @property
     def total(self) -> int:
-        return (
-            self.critical + self.high + self.medium + self.low + self.informational
-        )
+        return self.critical + self.high + self.medium + self.low + self.informational
 
     def at_or_above(self, cutoff: Severity) -> int:
         """Count of findings whose severity is at least ``cutoff``.
@@ -194,9 +192,7 @@ class SeverityCounts:
             Severity.LOW: self.low,
             Severity.INFORMATIONAL: self.informational,
         }
-        return sum(
-            count for rung, count in by_rung.items() if rung >= cutoff
-        )
+        return sum(count for rung, count in by_rung.items() if rung >= cutoff)
 
     @property
     def weighted(self) -> int:

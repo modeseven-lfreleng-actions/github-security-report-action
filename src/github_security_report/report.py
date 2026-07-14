@@ -26,7 +26,6 @@ from github_security_report.models import (
     rank_offenders,
 )
 
-# Render order for the six sections.
 SIGNAL_ORDER: tuple[SignalType, ...] = (
     SignalType.CODEQL,
     SignalType.SCORECARD,
@@ -66,9 +65,7 @@ class SignalSection:
         """The worst N offenders (used for the Slack digest only)."""
         return self.offenders[:n]
 
-    def summary_counts(
-        self, excluded: Sequence[Repo] = ()
-    ) -> list[SummaryCount]:
+    def summary_counts(self, excluded: Sequence[Repo] = ()) -> list[SummaryCount]:
         """Footer count buckets for this signal (offenders are the table).
 
         Severity signals enumerate their failures as table rows, so there is no
@@ -226,9 +223,7 @@ class TableSection:
         """The description to show, falling back to the category default."""
         return self.description or self.category.description
 
-    def summary_counts(
-        self, excluded: Sequence[Repo] = ()
-    ) -> list[SummaryCount]:
+    def summary_counts(self, excluded: Sequence[Repo] = ()) -> list[SummaryCount]:
         """Footer count buckets for this table (failure, unknown, pass, excluded)."""
         fail_label = self.category.fail_label or "Failing"
         return [

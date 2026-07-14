@@ -38,7 +38,8 @@ human before anything is committed.
 
 Usage
 -----
-    export GITHUB_TOKEN=ghp_classic_pat_with_security_events_repo_read_org
+    # export a classic PAT with security_events + repo + read:org scopes
+    export GITHUB_TOKEN="your-classic-pat"
     uv run scripts/phase0_capability_spike.py --org lfreleng-actions --sample 5
     # or target specific repos:
     uv run scripts/phase0_capability_spike.py --repo dependamerge --repo project-reporting-tool

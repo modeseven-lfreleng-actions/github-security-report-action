@@ -64,6 +64,29 @@ GATED_SIGNALS: tuple[SignalType, ...] = (
 SAMPLE_SIZE = 10
 
 
+def _spread_sample(repos: list[Repo], sample_size: int) -> list[Repo]:
+    """Pick up to ``sample_size`` repositories evenly spread across ``repos``.
+
+    Taking the first N repos would systematically miss evidence when a tool is
+    only deployed on later repositories, wrongly skipping the signal. Whenever
+    at least two repos are sampled the spacing is endpoint-inclusive -- it
+    contains the first and last repository -- so a tool present only on the
+    earliest or latest repos is still probed. The probe count is unchanged and
+    the fixed step keeps the choice deterministic. Degenerate inputs collapse
+    sensibly: an empty or non-positive request yields nothing, a request at or
+    above the repo count returns every repo, and a single-repo request returns
+    the first repo.
+    """
+    if sample_size <= 0:
+        return []
+    if len(repos) <= sample_size:
+        return list(repos)
+    if sample_size == 1:
+        return [repos[0]]
+    step = (len(repos) - 1) / (sample_size - 1)
+    return [repos[round(i * step)] for i in range(sample_size)]
+
+
 @dataclass(frozen=True)
 class GateResult:
     """The support decision for one gated signal."""
@@ -79,9 +102,7 @@ class GateResult:
 class GateClientProtocol(Protocol):
     """The client subset the sampled-probe layer needs."""
 
-    async def code_scanning_tool_present(
-        self, org: str, repo: str, tool: str
-    ) -> bool:
+    async def code_scanning_tool_present(self, org: str, repo: str, tool: str) -> bool:
         """Whether ``tool`` has uploaded code-scanning analyses to the repo."""
         raise NotImplementedError
 
@@ -92,9 +113,7 @@ class GateClientProtocol(Protocol):
 
 def _alert_evidence(alerts: list[dict], tool: str) -> bool:
     """Whether any org-sweep code-scanning alert was produced by ``tool``."""
-    return any(
-        (alert.get("tool") or {}).get("name") == tool for alert in alerts
-    )
+    return any((alert.get("tool") or {}).get("name") == tool for alert in alerts)
 
 
 async def _sample_evidence(
@@ -156,7 +175,7 @@ async def gate_signals(
         else:
             undecided.append(signal)
 
-    sample = repos[:sample_size]
+    sample = _spread_sample(repos, sample_size)
     if undecided and sample:
         evidence = await asyncio.gather(
             *(

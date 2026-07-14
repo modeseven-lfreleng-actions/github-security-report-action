@@ -110,9 +110,7 @@ def is_release_excluded(
         return True
     repo_age = _age_days(repo.created_at, generated_at)
     return (
-        repo_min_age_days > 0
-        and repo_age is not None
-        and repo_age < repo_min_age_days
+        repo_min_age_days > 0 and repo_age is not None and repo_age < repo_min_age_days
     )
 
 
@@ -258,7 +256,6 @@ def build_pvr_table(postures: list[RepoPosture]) -> TableSection:
         columns=("Repository",),
         enabled_of=lambda p: p.private_vulnerability_reporting,
     )
-
 
 
 def build_releases_table(
