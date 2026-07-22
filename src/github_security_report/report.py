@@ -27,11 +27,11 @@ from github_security_report.models import (
 )
 
 SIGNAL_ORDER: tuple[SignalType, ...] = (
-    SignalType.CODEQL,
     SignalType.SCORECARD,
-    SignalType.ZIZMOR,
     SignalType.AISLOP,
     SignalType.DEPENDABOT,
+    SignalType.CODEQL,
+    SignalType.ZIZMOR,
     SignalType.SECRET_SCANNING,
 )
 

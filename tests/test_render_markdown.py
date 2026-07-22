@@ -38,7 +38,8 @@ class TestSection:
             RepoState.OFFENDER,
             SeverityCounts(critical=1, high=2),
         )
-        out = markdown.render_section(_org([sig]).sections[0])
+        section = next(s for s in _org([sig]).sections if s.signal is SignalType.CODEQL)
+        out = markdown.render_section(section)
         assert "## CodeQL" in out
         assert "| Repository | Critical | High | Medium | Low | Total |" in out
         assert "[bad](https://github.com/o/bad)" in out
@@ -68,7 +69,8 @@ class TestSection:
             RepoState.OFFENDER,
             SeverityCounts(critical=1, high=2),
         )
-        out = markdown.render_section(_org([sig]).sections[0])
+        section = next(s for s in _org([sig]).sections if s.signal is SignalType.CODEQL)
+        out = markdown.render_section(section)
         assert "| Repository | Critical | High | Medium | Low | Total |" in out
         assert "Info" not in out
 
@@ -124,7 +126,10 @@ class TestSection:
             RepoSignal(_repo("nagme"), SignalType.CODEQL, RepoState.NAG),
             RepoSignal(_repo("dunno"), SignalType.CODEQL, RepoState.UNKNOWN),
         ]
-        out = markdown.render_section(_org(signals, count=3).sections[0])
+        section = next(
+            s for s in _org(signals, count=3).sections if s.signal is SignalType.CODEQL
+        )
+        out = markdown.render_section(section)
         # Standardised footer: disabled (with name list), unknown, then pass.
         assert "❌ 1 Disabled" in out
         assert "**Disabled:** [nagme](https://github.com/o/nagme)" in out
@@ -145,7 +150,9 @@ class TestSection:
             )
             for i in range(1, 6)
         ]
-        section = _org(signals, count=5).sections[0]
+        section = next(
+            s for s in _org(signals, count=5).sections if s.signal is SignalType.CODEQL
+        )
         out = markdown.render_section(section, top_n=2)
         # Two data rows under the header + separator.
         body_rows = [ln for ln in out.splitlines() if ln.startswith("| [r")]
@@ -166,7 +173,10 @@ class TestSection:
                 SeverityCounts(critical=1, high=1, medium=1, low=1),
             ),
         ]
-        out = markdown.render_section(_org(signals, count=2).sections[0])
+        section = next(
+            s for s in _org(signals, count=2).sections if s.signal is SignalType.CODEQL
+        )
+        out = markdown.render_section(section)
         # A trailing Total row sums each severity column plus the Total column.
         assert "| Total | 2 | 3 | 4 | 5 | 14 |" in out
 
