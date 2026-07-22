@@ -141,7 +141,7 @@ _CATEGORIES: dict[CategoryKey, CategoryMeta] = {
     ),
     CategoryKey.SECRET_SCANNING: CategoryMeta(
         key=CategoryKey.SECRET_SCANNING,
-        title="Secret scanning",
+        title="Secret Scanning",
         pass_label="Clean",
         fail_label=None,
         url=(
