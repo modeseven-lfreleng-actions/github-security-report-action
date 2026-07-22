@@ -353,7 +353,7 @@ def test_show_predicate_hides_disabled_categories() -> None:
     assert "CodeQL" not in out
     assert "Mutable Releases" not in out
     # A category left enabled by the predicate still renders.
-    assert "Secret scanning" in out
+    assert "Secret Scanning" in out
 
 
 # --------------------------------------------------------------------------- #
