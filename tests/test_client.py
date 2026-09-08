@@ -18,6 +18,7 @@ from github_security_report.client import (
     API_MAX_RETRIES,
     AuthError,
     GitHubClient,
+    GraphBatchError,
     NetworkError,
     _endpoint_diagnostics,
     _https_endpoint,
@@ -39,6 +40,10 @@ async def client() -> AsyncIterator[GitHubClient]:
     c = GitHubClient("test-token", concurrency=4)
     yield c
     await c.aclose()
+
+
+async def _no_sleep(delay: float) -> None:
+    """Stand-in for ``asyncio.sleep`` so retry backoff costs a test no time."""
 
 
 @respx.mock
@@ -1371,12 +1376,76 @@ async def test_repo_graph_batch_non_200_raises(
     )
     route = respx.post(f"{API}/graphql")
     route.mock(return_value=httpx.Response(502))
-    with pytest.raises(NetworkError) as excinfo:
+    with pytest.raises(GraphBatchError) as excinfo:
         await client.repo_graph_batch("o", ["a", "b"])
     # Exhausted the retry budget with exponential backoff before aborting.
     assert route.call_count == 1 + API_MAX_RETRIES
     assert slept == [1.0, 2.0, 4.0]
     assert "502" in str(excinfo.value)
+    # The status travels with the error so the collector can tell a failure
+    # a smaller batch might survive (this one) from one it cannot.
+    assert excinfo.value.status == 502
+    assert excinfo.value.splittable is True
+    assert isinstance(excinfo.value, NetworkError)
+    # Two repositories: the remedy is a smaller batch.
+    assert "timed the query out" in str(excinfo.value)
+    assert "--graph-batch" in str(excinfo.value)
+
+
+@respx.mock
+async def test_repo_graph_batch_forbidden_is_not_splittable(
+    client: GitHubClient,
+) -> None:
+    # A genuine 403 (no Retry-After, remaining quota) is not retried by the
+    # transport and fails identically at any batch size, so the error says so.
+    route = respx.post(f"{API}/graphql").mock(return_value=httpx.Response(403))
+    with pytest.raises(GraphBatchError) as excinfo:
+        await client.repo_graph_batch("o", ["a"])
+    assert excinfo.value.status == 403
+    assert excinfo.value.splittable is False
+    # It failed fast, so the message must not claim a retry budget was spent,
+    # and it names the permission check as the likely remedy.
+    assert route.call_count == 1
+    message = str(excinfo.value)
+    assert "exhausting retries" not in message
+    assert "permission" in message and "token" in message
+
+
+@respx.mock
+@pytest.mark.parametrize("status", [500, 503])
+async def test_repo_graph_batch_persistent_outage_is_not_splittable(
+    client: GitHubClient, monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    # Only the gateway-timeout statuses are evidence about the query's size. A
+    # 500 or 503 that survives the transport's retries is GitHub being down:
+    # splitting would hand every smaller batch a fresh retry budget against an
+    # unavailable service, multiplying requests and delaying the abort.
+    monkeypatch.setattr(
+        "github_security_report.client.transport.asyncio.sleep", _no_sleep
+    )
+    respx.post(f"{API}/graphql").mock(return_value=httpx.Response(status))
+    with pytest.raises(GraphBatchError) as excinfo:
+        await client.repo_graph_batch("o", ["a", "b"])
+    assert excinfo.value.status == status
+    assert excinfo.value.splittable is False
+    # An outage is not a size problem, so no smaller batch is suggested.
+    assert "outage" in str(excinfo.value)
+    assert "--graph-batch" not in str(excinfo.value)
+
+
+@respx.mock
+async def test_repo_graph_batch_gateway_timeout_is_splittable(
+    client: GitHubClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 504 is the gateway's own timeout status, so it carries the same meaning
+    # as the observed 502: the query ran too long for its size.
+    monkeypatch.setattr(
+        "github_security_report.client.transport.asyncio.sleep", _no_sleep
+    )
+    respx.post(f"{API}/graphql").mock(return_value=httpx.Response(504))
+    with pytest.raises(GraphBatchError) as excinfo:
+        await client.repo_graph_batch("o", ["a", "b"])
+    assert excinfo.value.splittable is True
 
 
 @respx.mock
@@ -1415,9 +1484,13 @@ async def test_repo_graph_batch_missing_data_raises(client: GitHubClient) -> Non
             200, json={"data": None, "errors": [{"message": "timedout"}]}
         )
     )
-    with pytest.raises(NetworkError) as excinfo:
+    with pytest.raises(GraphBatchError) as excinfo:
         await client.repo_graph_batch("o", ["a"])
     assert "no data" in str(excinfo.value)
+    # GitHub reports a timed-out query this way too, so it is a size failure
+    # the collector may split, and the status records what was answered.
+    assert excinfo.value.status == 200
+    assert excinfo.value.splittable is True
 
 
 async def test_repo_graph_batch_empty_names_no_request(client: GitHubClient) -> None:
@@ -2315,3 +2388,91 @@ async def test_repo_graph_batch_unattributable_error_marks_all_unreadable(
     )
     out = await client.repo_graph_batch("o", ["a", "b"])
     assert [out["a"].unreadable, out["b"].unreadable] == [True, True]
+
+
+@respx.mock
+async def test_repo_graph_batch_resource_limit_is_a_splittable_batch_failure(
+    client: GitHubClient,
+) -> None:
+    # Observed against lfreleng-actions with a 60-repository batch: HTTP 200,
+    # the first aliases fully resolved, then 134 errors all reading "Resource
+    # limits for this query exceeded" as GitHub ran out of execution budget
+    # and nulled the remaining fields. Those nulls say nothing about the
+    # repositories -- the same batch resolves in full when halved -- so
+    # marking most of the batch unknown would understate the report for a
+    # reason the collector can fix. It is a batch failure to split instead.
+    node = _graph_repo_node(enabled=True)
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {"r0": node, "r1": node},
+                "errors": [
+                    {
+                        "path": ["r1", "pullRequests", "nodes", 0, "commits"],
+                        "message": "Resource limits for this query exceeded.",
+                    }
+                ],
+            },
+        )
+    )
+    with pytest.raises(GraphBatchError) as excinfo:
+        await client.repo_graph_batch("o", ["a", "b"])
+    assert excinfo.value.status == 200
+    assert excinfo.value.splittable is True
+    assert excinfo.value.reason == "resource limits exceeded"
+    assert "--graph-batch" in str(excinfo.value)
+
+
+@respx.mock
+async def test_repo_graph_batch_single_repo_failure_does_not_advise_a_smaller_batch(
+    client: GitHubClient,
+) -> None:
+    # By the time a size-shaped failure escapes the adaptive collector the
+    # batch is one repository, so "use a smaller --graph-batch" would be advice
+    # that cannot be followed. The message names what can be done instead.
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(
+            200, json={"data": None, "errors": [{"message": "timedout"}]}
+        )
+    )
+    with pytest.raises(GraphBatchError) as excinfo:
+        await client.repo_graph_batch("o", ["a"])
+    message = str(excinfo.value)
+    assert "--graph-batch" not in message
+    assert "retry later" in message
+    assert "exclude the repository" in message
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    "error",
+    [
+        # The hourly point budget, as GitHub documents it.
+        {"type": "RATE_LIMITED", "message": "API rate limit exceeded for user ID 1."},
+        # The secondary (burst) limit, observed while the hourly budget still
+        # read 5000/5000: a different type spelling and an extra code.
+        {
+            "type": "RATE_LIMIT",
+            "code": "graphql_rate_limit",
+            "message": "API rate limit already exceeded for user ID 1.",
+        },
+    ],
+)
+async def test_repo_graph_batch_rate_limit_is_not_splittable(
+    client: GitHubClient, error: dict
+) -> None:
+    # Observed once a budget was spent: HTTP 200, ``data`` null, and a single
+    # rate-limit error -- the same outer shape as a timed-out query. Halving
+    # would burn one more request per level against a budget that will not
+    # refill for a while, so the client must say "do not split" rather than
+    # let the collector infer a size problem from the null data.
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(200, json={"data": None, "errors": [error]})
+    )
+    with pytest.raises(GraphBatchError) as excinfo:
+        await client.repo_graph_batch("o", ["a", "b"])
+    assert excinfo.value.status == 200
+    assert excinfo.value.splittable is False
+    assert excinfo.value.reason == "rate limited"
+    assert "rate limit" in str(excinfo.value)

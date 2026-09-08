@@ -166,6 +166,7 @@ def _report_from(data: dict, base: ReportConfig) -> ReportConfig:
                 "dependabot_warn_threshold",
                 "dependabot_error_threshold",
                 "gating",
+                "graph_batch",
             }
         },
     )

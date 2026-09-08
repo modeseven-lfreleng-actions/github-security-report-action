@@ -561,6 +561,18 @@ def test_negative_per_category_top_n_rejected(flag: str) -> None:
     assert flag in result.stdout
 
 
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_graph_batch_below_one_rejected(value: str) -> None:
+    # Unlike a row limit, a batch size has no "unlimited" reading of 0: a query
+    # carrying no repositories is not a query. The floor is 1, matching the
+    # config schema.
+    result = cli.invoke(
+        app, ["report", "--org", "o", f"--graph-batch={value}", "--no-color"]
+    )
+    assert result.exit_code == 2
+    assert "--graph-batch must be 1 or greater" in result.stdout
+
+
 @pytest.mark.parametrize("bad", ["justaname", "o/r/extra", "/r", "o/"])
 def test_malformed_repo_rejected(bad: str) -> None:
     # An explicit --repo that is not exactly 'owner/name' must error, not
@@ -581,6 +593,7 @@ def test_malformed_repo_rejected(bad: str) -> None:
         ["--repo-min-age-days", "7"],
         ["--release-max-age-days", "7"],
         ["--releases-exclude", "r"],
+        ["--graph-batch", "5"],
     ],
 )
 def test_org_only_flags_rejected_in_repo_mode(flag: list[str]) -> None:
@@ -762,9 +775,20 @@ class TestReportOverrides:
         assert report_cfg.release_max_age_days == 2
         assert org_cfg.releases_exclude == ("skip-me",)
 
+    def test_graph_batch_moves_in_either_direction(self) -> None:
+        # An operational lever rather than report policy, so unlike the
+        # one-way booleans it may both raise and lower the configured value.
+        org = OrgConfig(name="o", report=ReportConfig(graph_batch=10))
+        _, lowered = ReportOverrides(graph_batch=4).apply(org)
+        _, raised = ReportOverrides(graph_batch=20).apply(org)
+        _, untouched = ReportOverrides().apply(org)
+        assert lowered.graph_batch == 4
+        assert raised.graph_batch == 20
+        assert untouched.graph_batch == 10
+
 
 @pytest.mark.parametrize(
-    "flag", ["--no-gating", "--include-archived", "--include-test"]
+    "flag", ["--no-gating", "--include-archived", "--include-test", "--graph-batch=5"]
 )
 def test_new_flags_are_accepted_in_org_mode(flag: str) -> None:
     # Resolution stops at the missing token, which is past option parsing:

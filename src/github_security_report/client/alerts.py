@@ -27,7 +27,8 @@ import logging
 from typing import NamedTuple
 
 from github_security_report.client.endpoints import BULK_KINDS
-from github_security_report.client.transport import AuthError, NetworkError, Transport
+from github_security_report.client.errors import AuthError, NetworkError
+from github_security_report.client.transport import Transport
 from github_security_report.secret_patterns import (
     GENERIC_SECRET_TYPES,
     PATTERN_CONFIG_PATH,

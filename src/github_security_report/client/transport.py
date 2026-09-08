@@ -28,26 +28,12 @@ from github_security_report.client.endpoints import (
     GRAPHQL_API,
     SCORECARD_API,
 )
+from github_security_report.client.errors import AuthError, NetworkError
 from github_security_report.client.parsers import _next_page_url, _parse_retry_after
 
 log = logging.getLogger(__name__)
 
 _TransportT = TypeVar("_TransportT", bound="Transport")
-
-
-class NetworkError(RuntimeError):
-    """The GitHub API was unusable after exhausting the retry budget.
-
-    Raised for transport-level failures (DNS, connection, TLS, or read
-    timeout) against the GitHub API that persist across every retry within
-    ``API_MAX_TOTAL_WAIT_SECONDS``, and by callers whose data is load-bearing
-    for the whole report (the batched GraphQL prefetch) when GitHub keeps
-    answering with server errors. The run aborts rather than rendering a
-    report from missing data: when the API itself cannot be relied on, an
-    empty or "all clean / all unknown" report is actively misleading.
-    Transport failures against the third-party Scorecard endpoint do not
-    raise this -- they degrade that one signal instead.
-    """
 
 
 async def _endpoint_diagnostics(url: str) -> str:
@@ -84,23 +70,6 @@ async def _endpoint_diagnostics(url: str) -> str:
         detail = exc.strerror or str(exc) or "resolution failed"
         addr = f"unresolved ({detail})"
     return f"host={host} ip={addr} port={port}"
-
-
-class AuthError(NetworkError):
-    """GitHub rejected the credentials (HTTP 401).
-
-    Distinct from the permission-shaped failures the report degrades over. A
-    403 usually means "this token cannot see this one feature", which is a
-    legitimate per-signal unknown; a 401 means the token itself is invalid,
-    expired or revoked, so every remaining read fails the same way. Degrading
-    would render a confident "all clean" report out of nothing but rejections
-    -- the false negative a security report must never publish, and one that a
-    scheduled run would happily push to GitHub Pages over a good report.
-
-    Subclasses :class:`NetworkError` so any caller already aborting on an
-    unusable API keeps doing so; the CLI catches it first to report the cause
-    and exit with its own status.
-    """
 
 
 def _auth_error(method: str, url: str) -> AuthError:

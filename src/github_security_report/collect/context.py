@@ -27,10 +27,6 @@ _T = TypeVar("_T")
 # the client semaphore).
 REPO_BATCH = 50
 
-# Repositories per batched GraphQL prefetch query. Kept smaller than the REST
-# probe batch because each aliased sub-query expands the single request's cost.
-GRAPH_BATCH = 25
-
 
 @dataclass(frozen=True)
 class OrgCollectContext:

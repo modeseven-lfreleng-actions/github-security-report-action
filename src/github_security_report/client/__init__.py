@@ -35,6 +35,11 @@ from github_security_report.client.endpoints import (
     SCORECARD_API,
     _https_endpoint,
 )
+from github_security_report.client.errors import (
+    AuthError,
+    GraphBatchError,
+    NetworkError,
+)
 from github_security_report.client.org_reads import OrgReadClient
 from github_security_report.client.parsers import (
     _last_published,
@@ -52,8 +57,6 @@ from github_security_report.client.queries import (
 )
 from github_security_report.client.reads import ReadClient
 from github_security_report.client.transport import (
-    AuthError,
-    NetworkError,
     Transport,
     _endpoint_diagnostics,
 )
@@ -72,6 +75,7 @@ __all__ = [
     "AlertReads",
     "AuthError",
     "GitHubClient",
+    "GraphBatchError",
     "NetworkError",
     "OrgReadClient",
     "ReadClient",

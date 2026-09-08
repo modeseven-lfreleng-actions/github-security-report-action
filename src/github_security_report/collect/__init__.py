@@ -20,7 +20,6 @@ The org-wide evidence shared by every per-repository probe is bundled into
 from __future__ import annotations
 
 from github_security_report.collect.context import (
-    GRAPH_BATCH,
     REPO_BATCH,
     OrgCollectContext,
     gather_in_batches,
@@ -31,6 +30,12 @@ from github_security_report.collect.protocols import (
     RepoClientProtocol,
 )
 from github_security_report.collect.repo import collect_repo
+from github_security_report.config import ReportConfig
+
+# Deprecated: the GraphQL prefetch batch size is ``report.graph_batch`` (config,
+# ``--graph-batch``) and adapts at run time; this name is kept for importers of
+# the former module constant and mirrors the built-in default.
+GRAPH_BATCH = ReportConfig.graph_batch
 
 __all__ = [
     "GRAPH_BATCH",

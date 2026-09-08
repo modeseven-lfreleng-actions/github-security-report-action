@@ -90,6 +90,12 @@ jobs:
           output_dir: "site"
           pages_url: "${{ steps.pages-url.outputs.url }}"
           slack_channel: "${{ vars.SLACK_CHANNEL_ID }}"
+          # Repositories per GraphQL prefetch query. Unset leaves the tool's
+          # default (10); a repository or organisation variable adjusts it
+          # from settings, without a workflow edit or a release. Passed only
+          # when set, so a pinned release predating the flag is unaffected
+          # until the variable exists.
+          graph_batch: "${{ vars.GSR_GRAPH_BATCH }}"
           force_notify: "${{ inputs.force_notify || 'false' }}"
           use_local_source: "${{ inputs.use_local_source || 'false' }}"
 

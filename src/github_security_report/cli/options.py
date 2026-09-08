@@ -34,6 +34,10 @@ class ReportOverrides:
     not on, and ``--include-archived`` / ``--include-test`` can widen the scope
     but not narrow it, so a flag can loosen what the configuration asked for
     without being able to tighten it behind the operator's back.
+
+    ``graph_batch`` is an operational lever rather than report policy: it
+    changes how the GraphQL prefetch is issued, never what the report says, so
+    it may move in either direction.
     """
 
     repo_min_age_days: int | None = None
@@ -42,13 +46,15 @@ class ReportOverrides:
     gating: bool | None = None
     include_archived: bool | None = None
     include_test: bool | None = None
+    graph_batch: int | None = None
 
     def apply(self, org_cfg: OrgConfig) -> tuple[OrgConfig, ReportConfig]:
         """The org and report configs to collect with, overrides applied.
 
-        The two age thresholds and the three booleans are scalar policy, so
-        applying one uniformly across every configured organisation is what a
-        reader of the flag expects, and matches how ``--top-n`` already behaves.
+        The two age thresholds, the three booleans and the batch size are
+        scalar policy, so applying one uniformly across every configured
+        organisation is what a reader of the flag expects, and matches how
+        ``--top-n`` already behaves.
 
         ``releases_exclude`` is not scalar: it is a curated per-organisation
         list, and one flag replacing all of them loses data the config
@@ -63,6 +69,7 @@ class ReportOverrides:
             "gating",
             "include_archived",
             "include_test",
+            "graph_batch",
         ):
             value = getattr(self, name)
             if value is not None:

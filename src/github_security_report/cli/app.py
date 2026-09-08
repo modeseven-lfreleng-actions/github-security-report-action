@@ -166,6 +166,11 @@ def report(
         "--include-test",
         help="Analyse test repositories, which are excluded by default.",
     ),
+    graph_batch: int | None = typer.Option(
+        None,
+        "--graph-batch",
+        help="Repositories per batched GraphQL prefetch query (minimum 1; default: config, else 10). GitHub bounds how long one query may run, so a batch that still fails is halved automatically; this sets the starting size.",
+    ),
     no_color: bool = typer.Option(False, "--no-color", help="Disable coloured output."),
 ) -> None:
     """Generate a security and quality report."""
@@ -181,6 +186,7 @@ def report(
     )
     boundary.check_non_negative(console, "--repo-min-age-days", repo_min_age_days)
     boundary.check_non_negative(console, "--release-max-age-days", release_max_age_days)
+    boundary.check_positive(console, "--graph-batch", graph_batch)
     hidden = boundary.resolve_hidden(console, hide)
 
     cfg = _load_config(config_file, config_data, org, token_env, console=console)
@@ -210,6 +216,7 @@ def report(
                 gating=False if no_gating else None,
                 include_archived=True if include_archived else None,
                 include_test=True if include_test else None,
+                graph_batch=graph_batch,
             ),
             hidden=hidden,
         )
@@ -236,6 +243,7 @@ def report(
                     ("--no-gating", no_gating),
                     ("--include-archived", include_archived),
                     ("--include-test", include_test),
+                    ("--graph-batch", graph_batch is not None),
                 )
                 if supplied
             ],

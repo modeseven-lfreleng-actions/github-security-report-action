@@ -258,6 +258,7 @@ environment-variable name, never embedded.
     "include_test": false,
     "repo_min_age_days": 28,
     "release_max_age_days": 60,
+    "graph_batch": 10,
     "order": { "style": "auto" }
   },
   "organizations": [
@@ -1083,6 +1084,55 @@ Gating decides **collection**; the per-category render toggles above decide
 **presentation**. A skipped section still renders (as the one-line notice)
 unless its category is also disabled.
 
+### GraphQL prefetch batch size
+
+The releases/tags, Dependabot-enablement, open-issues and pull-request data
+for every in-scope repository comes from one aliased GraphQL query per batch
+of repositories rather than a round-trip per repository. GitHub bounds how
+much work a single GraphQL query may do — roughly ten seconds of execution —
+and reports a breach in one of three shapes, each after the query has already
+run for the full limit: an **HTTP 502** (or 504) gateway timeout from the
+edge, an HTTP 200 carrying no `data`, or an HTTP 200 whose `errors` say
+`Resource limits for this query exceeded` with the unresolved fields nulled.
+Each aliased repository adds a few hundred milliseconds, so the batch
+size is bounded by *latency*, not by rate-limit cost: 25 repositories measured
+at ~9 s against `lfreleng-actions` and failed intermittently; 10 measured at
+~3.5 s.
+
+`report.graph_batch` (default `10`; minimum `1`) sets the starting batch size,
+globally or per organisation. It is a lever for a slow day rather than a hard
+limit: a batch that still fails on size after the transport's own retries is
+re-issued at **half** the size, and the smaller size is kept for the rest of
+that organisation's collection (each organisation in a multi-org run starts
+from its own configured size, since organisations differ in how much data a
+repository carries). Only a single-repository query GitHub still cannot
+answer, or a failure that a smaller query could not fix (a `403`, an
+exhausted rate limit, or a `500`/`503` outage rather than a `502`/`504`
+timeout), aborts the run with exit code `3`.
+
+The value can be set three ways, in this order of precedence:
+
+1. `--graph-batch N` on the command line (the action's `graph_batch` input).
+2. A **repository or organisation variable** passed to that input. The
+   bundled `reporting.yaml` passes `vars.GSR_GRAPH_BATCH`, so the size can be
+   adjusted from repository settings without a workflow edit or a release;
+   a caller's own workflow can do the same. (The `vars` context is not
+   available inside a composite action, so the action cannot read it itself.)
+3. `report.graph_batch` in the configuration; otherwise the built-in `10`.
+
+Batching changes how many requests carry the data, not how many GraphQL nodes
+are resolved, so the node work is the same whatever the batch size. A smaller
+batch does cost slightly more of the rate-limit budget — each query is charged
+at least one point, and per-query cost rounding adds a little when one query
+becomes several — and a few more requests (a 124-repository organisation is 13
+queries at 10, 5 at 25). Against the 5,000-point hourly budget that is noise;
+a larger value buys nothing except a longer first failure.
+
+> The flag and input are recent additions. An empty input is not passed to
+> the tool, so an unset variable cannot break a run; but a pinned tool version
+> predating the flag will reject a set one with `No such option`, so set
+> `GSR_GRAPH_BATCH` only once the pinned release supports it.
+
 ### Pass/fail severity cutoff
 
 The severity-ranked signals (CodeQL, Scorecard, Zizmor, aislop, Dependabot
@@ -1160,6 +1210,7 @@ and the Slack **bot token** is consumed by the workflow, not the CLI.
 | `fail_threshold` | No | `none` | `none`/`low`/`medium`/`high`/`critical`/`any` (repo mode) |
 | `force_notify` | No | `false` | Post to Slack regardless of `report_day` |
 | `hide` | No | `""` | Category keys to suppress on every output (space- or comma-separated). Overrides config, and is one-way: it cannot re-enable a disabled category |
+| `graph_batch` | No | `""` | Repositories per batched GraphQL prefetch query (minimum `1`; default: config, else `10`). Pass a repository or organisation variable such as `${{ vars.GSR_GRAPH_BATCH }}` to adjust it from settings. A batch that still fails is halved automatically, so this sets the starting size (see [GraphQL prefetch batch size](#graphql-prefetch-batch-size)) |
 | `tool_version` | No | `""` | Published PyPI version to install. Empty (the default) uses the Dependabot-managed pin in `.github/runtime-pin/requirements.txt`; set a specific version to override. Ignored on pull requests or when `use_local_source` is `true` (both run from source) |
 | `use_local_source` | No | `false` | Run from the checked-out source instead of PyPI (for testing unreleased code from any event) |
 
@@ -1203,7 +1254,7 @@ API in the same way.
 | `0` | The report ran. |
 | `1` | Repo mode only: findings met or exceeded `--fail-threshold`. |
 | `2` | Usage or configuration error (bad flag, unreadable config). |
-| `3` | The GitHub API was unreachable after the retry budget. |
+| `3` | The GitHub API was unusable after the retry budget (see below). |
 | `4` | GitHub rejected the credentials (HTTP 401). |
 
 Codes `3` and `4` are **aborts, not reports**: nothing is written and no Pages
@@ -1214,8 +1265,19 @@ section `No data` or `All Clean` — and a scheduled job would then publish it
 over the last good one. Reporting false data is worse than reporting none, so
 the run stops at the first rejected request.
 
+Code `3` covers a GitHub API that could not be reached at all, and a GraphQL
+prefetch that failed as a whole: either a size-shaped failure (`502`/`504`
+timeout, `200` with no data, resource limits exceeded) that persisted even
+after the batch had been halved down to one repository, or a failure that
+halving could not have fixed (`403`, an exhausted GraphQL rate limit, a
+`500`/`503` outage), which aborts at once. The message reports the status or
+cause and ends with the matching next step — a smaller `--graph-batch`, retry
+later, wait for the rate-limit budget to reset, or check the token's
+permissions — so read it rather than assuming "retry later" (see
+[GraphQL prefetch batch size](#graphql-prefetch-batch-size)).
+
 The two are separate codes because the remedy differs: `4` means rotate or fix
-the token, `3` means retry later.
+the token, `3` usually means retry later.
 
 ## Remediation
 

@@ -244,6 +244,29 @@ class TestBuildConfig:
         org = config.build_config(data).organizations[0]
         assert org.report.gating is False
 
+    def test_graph_batch_default_and_override(self) -> None:
+        # The GraphQL prefetch batch size defaults to a value measured to sit
+        # well inside GitHub's per-query time limit; a global or per-org
+        # report block can retune it.
+        assert config.build_config(MINIMAL).report.graph_batch == 10
+        data = {
+            "report": {"graph_batch": 6},
+            "organizations": [
+                {"name": "o", "report": {"graph_batch": 3}},
+                {"name": "p"},
+            ],
+        }
+        cfg = config.build_config(data)
+        assert cfg.organizations[0].report.graph_batch == 3
+        assert cfg.organizations[1].report.graph_batch == 6
+
+    def test_rejects_graph_batch_below_one(self) -> None:
+        # 0 has no "unlimited" meaning for a batch size, so the floor is 1.
+        with pytest.raises(ConfigError):
+            config.build_config(
+                {"report": {"graph_batch": 0}, "organizations": [{"name": "o"}]}
+            )
+
     def test_default_ruleset_workflows_include_aislop(self) -> None:
         # The built-in ruleset keyword map covers both workflow-gated scanners.
         workflows = config.build_config(MINIMAL).report.ruleset_workflows
