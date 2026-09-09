@@ -50,6 +50,11 @@ def _copilot_unresolved(node: dict) -> bool | None:
     every thread was seen. This mirrors the rule ``mergeable`` and the check
     rollup already follow: not established is not the same as nothing to report.
 
+    The window holds the *newest* threads (see ``_REVIEW_THREAD_WINDOW``), which
+    is what makes ``True`` reachable on a long review: unanswered feedback is
+    the recent kind, so a truncated window that finds nothing is a weak reading
+    rather than the usual one.
+
     An outdated thread still counts. GitHub marks a thread outdated when the
     code beneath it changes but does not resolve it, so the feedback remains
     unanswered -- which is exactly what the column reports.

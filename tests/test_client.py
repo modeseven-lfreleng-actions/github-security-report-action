@@ -23,6 +23,7 @@ from github_security_report.client import (
     _endpoint_diagnostics,
     _https_endpoint,
     _parse_retry_after,
+    queries,
 )
 from github_security_report.client import transport as transport_mod
 from github_security_report.secret_patterns import (
@@ -1975,6 +1976,31 @@ async def test_repo_graph_batch_unusable_thread_total_is_indeterminate(
     )
     out = await client.repo_graph_batch("o", ["a"])
     assert [p.copilot_unresolved for p in out["a"].pull_requests] == [None, None]
+
+
+@respx.mock
+async def test_review_thread_window_takes_the_newest_threads(
+    client: GitHubClient,
+) -> None:
+    # Regression, and one no synthetic node can catch: every test above feeds
+    # the parser threads it has already chosen, so which threads GitHub would
+    # have returned is a property of the query text alone.
+    #
+    # ``reviewThreads`` is ordered oldest-first and takes no ``orderBy``, so
+    # ``first`` would window the threads a review has already worked through --
+    # the resolved ones. Observed against a live 115-thread pull request:
+    # ``first: 20`` returned nothing unresolved while ``last: 20`` returned both
+    # outstanding Copilot threads, so the column read 0 for a pull request
+    # plainly waiting on a reply.
+    captured: list[str] = []
+
+    def _capture(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content)["query"])
+        return httpx.Response(200, json={"data": {"r0": _graph_repo_node()}})
+
+    respx.post(f"{API}/graphql").mock(side_effect=_capture)
+    await client.repo_graph_batch("o", ["a"])
+    assert f"reviewThreads(last: {queries._REVIEW_THREAD_WINDOW})" in captured[0]
 
 
 @respx.mock
