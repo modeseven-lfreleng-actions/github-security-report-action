@@ -745,10 +745,15 @@ pull request that cannot progress until somebody responds. The count also feeds
 the row ranking, so a backlog awaiting review outranks an untouched one of the
 same size.
 
-The scan reads up to **20 review threads per pull request**, which is the single
-most expensive part of the prefetch (see the cost figures above). Where a pull
-request carries more threads than that and none of the collected ones qualifies,
-the pull request is treated as **indeterminate** rather than clear — see below.
+The scan reads the **newest 20 review threads per pull request**, which is the
+single most expensive part of the prefetch (see the cost figures above). The
+newest end is deliberate: GitHub returns review threads oldest-first and offers
+no way to order them, so reading from the front would window the threads a
+review has already worked through — the resolved ones — and report a pull
+request still waiting on its latest round as clear. Unanswered feedback is the
+recent kind. Where a pull request carries more threads than the window and none
+of the collected ones qualifies, it is treated as **indeterminate** rather than
+clear — see below.
 
 #### Automation backlog thresholds
 

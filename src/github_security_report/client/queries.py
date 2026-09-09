@@ -120,8 +120,17 @@ _ASSIGNEE_WINDOW = 10
 # without this connection and 57, 89 or 151 with a window of 5, 10 or 20. At 20
 # a 118-repository organisation costs ~755 points of the 5,000-point hourly
 # budget, which leaves room for the several organisations a scheduled run
-# covers, and 20 threads covers a realistic review cycle: this project's own
-# most-reviewed pull requests carry single-figure thread counts.
+# covers.
+#
+# The window is taken with ``last``, not ``first``, and which end it is anchored
+# to decides whether it can answer the question at all. ``reviewThreads`` is
+# ordered oldest-first and accepts no ``orderBy``, so ``first`` collects the
+# threads a review has already worked through -- exactly the ones most likely to
+# have been resolved. A pull request that has answered dozens of rounds and is
+# now waiting on the latest would fill the window with settled threads and
+# report the outstanding ones as never seen. Unresolved feedback ages into
+# resolution rather than the other way round, so the newest threads are where
+# the column's answer lives. Same node cost, opposite blind spot.
 #
 # ``totalCount`` rides along free of node cost and is what keeps the bounded
 # window honest -- a pull request carrying more threads than the window returned
@@ -173,7 +182,7 @@ fragment RepoData on Repository {{
       authorAssociation
       author {{ __typename login }}
       assignees(first: {_ASSIGNEE_WINDOW}) {{ nodes {{ login }} }}
-      reviewThreads(first: {_REVIEW_THREAD_WINDOW}) {{
+      reviewThreads(last: {_REVIEW_THREAD_WINDOW}) {{
         totalCount
         nodes {{
           isResolved
