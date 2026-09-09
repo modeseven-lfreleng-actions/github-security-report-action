@@ -88,8 +88,8 @@ _CODE_SCANNING_SIGNAL_TOOLS = tuple(CODE_SCANNING_TOOLS.values())
 # leaving room for the several organisations a single scheduled run covers.
 # ``totalCount`` is unaffected by the window, so the reported open-issue total
 # stays exact however large a backlog is; only the label breakdown is
-# window-scoped. Note that ``GRAPH_BATCH`` is not a lever here: batching changes
-# how many requests carry the nodes, not how many nodes are charged for.
+# window-scoped. Note that ``report.graph_batch`` is not a lever here: batching
+# changes how many requests carry the nodes, not how many nodes are charged for.
 # ``totalCount`` is requested on both connections. It costs no nodes, and it is
 # what keeps a bounded window honest: the issue total stays exact however large
 # a backlog is, and an issue carrying more labels than the label window returned

@@ -10,6 +10,7 @@ import logging
 import pytest
 
 from github_security_report import collect, pulls
+from github_security_report.client import GraphBatchError
 from github_security_report.config import OrgConfig, ReportConfig
 from github_security_report.models import Repo, RepoGraphData, RepoState, SignalType
 from github_security_report.report import OrgReport, SignalSection
@@ -641,3 +642,165 @@ async def test_collect_org_releases_exclude_and_min_age() -> None:
     assert report.releases is not None
     # dependamerge is name-excluded; git-configure-action is too young -> empty.
     assert report.releases.rows == []
+
+
+# --------------------------------------------------------------------------- #
+# Adaptive GraphQL prefetch batching
+# --------------------------------------------------------------------------- #
+class BatchLimitedClient(FakeClient):
+    """A GitHub whose GraphQL endpoint cannot finish a query above ``limit``.
+
+    Models the real failure mode: GitHub bounds per-query execution time, so a
+    query carrying too many aliased repositories fails as a whole (a 502 from
+    the edge, after the transport's own retries) while the same repositories
+    read fine in smaller batches. ``batches`` records the size of every query
+    issued, in order, so a test can see the batching policy rather than only
+    its outcome. ``splittable`` is what the client would have decided from the
+    response; it defaults to the size-failure reading.
+    """
+
+    def __init__(
+        self,
+        repo_count: int,
+        *,
+        limit: int,
+        status: int = 502,
+        splittable: bool = True,
+        reason: str | None = None,
+    ) -> None:
+        super().__init__()
+        self.repos = [_repo(f"repo-{i:02d}") for i in range(repo_count)]
+        self.limit = limit
+        self.status = status
+        self.splittable = splittable
+        self.reason = reason
+        self.batches: list[int] = []
+
+    async def repo_graph_batch(
+        self, org: str, names: list[str]
+    ) -> dict[str, RepoGraphData]:
+        self.batches.append(len(names))
+        if len(names) > self.limit:
+            raise GraphBatchError(
+                f"GraphQL prefetch for {org} failed with HTTP {self.status}",
+                status=self.status,
+                splittable=self.splittable,
+                reason=self.reason,
+            )
+        return await super().repo_graph_batch(org, names)
+
+
+async def _collect_graph(
+    client: BatchLimitedClient, *, batch_size: int
+) -> dict[str, RepoGraphData]:
+    return await collect.org._collect_graph(
+        client, "o", client.repos, batch_size=batch_size
+    )
+
+
+async def test_graph_batch_size_comes_from_the_report_config() -> None:
+    client = BatchLimitedClient(10, limit=100)
+    await collect.collect_org(
+        client, OrgConfig(name="o"), ReportConfig(graph_batch=4), generated_at=WHEN
+    )
+    assert client.batches == [4, 4, 2]
+
+
+def test_graph_batch_module_constant_still_importable() -> None:
+    # ``collect.GRAPH_BATCH`` was exported before the size became a setting.
+    # Kept as a deprecated alias for the built-in default so existing
+    # importers keep working, and pinned to the config default so the two
+    # cannot drift apart.
+    assert collect.GRAPH_BATCH == ReportConfig().graph_batch == 10
+    assert "GRAPH_BATCH" in collect.__all__
+
+
+async def test_graph_batch_halves_on_a_server_error_and_stays_halved(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # GitHub can finish a query of 5 repositories but not 10. The first batch
+    # fails and is re-queued at half the size; the rest of this organisation's
+    # collection also uses the smaller size, since a slow day at GitHub is a
+    # property of the collection rather than of the one batch that happened to
+    # hit it first.
+    client = BatchLimitedClient(23, limit=5)
+    with caplog.at_level(logging.WARNING, logger="github_security_report.collect.org"):
+        graph = await _collect_graph(client, batch_size=10)
+    assert client.batches == [10, 5, 5, 5, 5, 3]
+    assert sorted(graph) == sorted(repo.name for repo in client.repos)
+    assert not any(data.unreadable for data in graph.values())
+    messages = [r.getMessage() for r in caplog.records]
+    assert len(messages) == 1
+    assert "HTTP 502" in messages[0]
+    assert "batch of 10" in messages[0] and "batches of 5" in messages[0]
+
+
+async def test_graph_batch_halves_repeatedly_down_to_one() -> None:
+    # Only single-repository queries succeed: 8 -> 4 -> 2 -> 1, then every
+    # repository is read one at a time rather than the run aborting.
+    client = BatchLimitedClient(6, limit=1)
+    graph = await _collect_graph(client, batch_size=8)
+    assert client.batches == [6, 3, 1, 1, 1, 1, 1, 1]
+    assert len(graph) == 6
+
+
+async def test_graph_batch_of_one_that_still_fails_aborts() -> None:
+    # A single-repository query GitHub still cannot answer is not a size
+    # problem: the API is unusable, and aborting beats fabricating defaults.
+    client = BatchLimitedClient(3, limit=0)
+    with pytest.raises(GraphBatchError) as excinfo:
+        await _collect_graph(client, batch_size=2)
+    assert excinfo.value.status == 502
+    assert client.batches == [2, 1]
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"), [(403, None), (429, None), (200, "rate limited")]
+)
+async def test_graph_batch_does_not_split_on_a_non_size_failure(
+    status: int, reason: str | None
+) -> None:
+    # A permission error or an exhausted rate limit would fail identically at
+    # any batch size, so splitting would only multiply the requests: the error
+    # propagates from the first batch untouched. The client marks these as
+    # not splittable, whatever HTTP status they arrived with -- a GraphQL rate
+    # limit is an HTTP 200.
+    client = BatchLimitedClient(
+        6, limit=1, status=status, splittable=False, reason=reason
+    )
+    with pytest.raises(GraphBatchError) as excinfo:
+        await _collect_graph(client, batch_size=3)
+    assert excinfo.value.status == status
+    assert client.batches == [3]
+
+
+async def test_graph_batch_splits_on_a_200_without_data() -> None:
+    # GitHub also reports a timed-out query as HTTP 200 with a null ``data``
+    # object, which the client surfaces with status 200: that is a size
+    # failure too and must be split rather than aborted.
+    client = BatchLimitedClient(4, limit=2, status=200)
+    graph = await _collect_graph(client, batch_size=4)
+    assert client.batches == [4, 2, 2]
+    assert len(graph) == 4
+
+
+async def test_graph_batch_log_names_the_reason_the_client_gave(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A resource-limit failure arrives as HTTP 200, so "HTTP 200" in the log
+    # would read as a success; the client's own phrase is used instead.
+    client = BatchLimitedClient(
+        4, limit=2, status=200, reason="resource limits exceeded"
+    )
+    with caplog.at_level(logging.WARNING, logger="github_security_report.collect.org"):
+        await _collect_graph(client, batch_size=4)
+    assert "failed (resource limits exceeded)" in caplog.records[0].getMessage()
+
+
+async def test_graph_batch_treats_a_zero_size_as_one() -> None:
+    # The CLI and schema both refuse 0, so this is defence in depth: a batch of
+    # nothing would otherwise loop forever without reading anything.
+    client = BatchLimitedClient(2, limit=5)
+    graph = await _collect_graph(client, batch_size=0)
+    assert client.batches == [1, 1]
+    assert len(graph) == 2

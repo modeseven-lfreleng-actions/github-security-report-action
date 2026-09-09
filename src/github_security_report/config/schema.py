@@ -101,6 +101,14 @@ CONFIG_SCHEMA: dict = {
                 # is reported as skipped with a setup-guide pointer instead of
                 # nagging every repository. Set false to always probe.
                 "gating": {"type": "boolean"},
+                # Repositories per batched GraphQL prefetch query. GitHub's
+                # per-query execution budget (~10 s; a breach arrives as a
+                # 502/504 gateway timeout, a 200 with no data, or a 200 whose
+                # errors say the resource limits were exceeded -- see
+                # client/batch_errors.py) is what bounds this, not node cost;
+                # a batch that fails any of those ways is halved
+                # automatically, so this sets the starting size.
+                "graph_batch": {"type": "integer", "minimum": 1},
                 "ruleset_workflows": {
                     "type": "object",
                     "additionalProperties": {"type": "string"},

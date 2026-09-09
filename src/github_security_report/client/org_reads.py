@@ -17,29 +17,22 @@ import logging
 
 from github_security_report.authors import is_automation_author, normalise_members
 from github_security_report.client.alerts import AlertReads
+from github_security_report.client.batch_errors import _alias_errors, _batch_response
 from github_security_report.client.parsers import _parse_iso, _parse_repo_node
 from github_security_report.client.queries import (
     _ORG_MEMBERS_QUERY,
     _REPO_GRAPH_FRAGMENT,
     _VIEWER_QUERY,
 )
-from github_security_report.client.transport import NetworkError
 from github_security_report.models import Repo, RepoGraphData
 
 log = logging.getLogger(__name__)
+
 
 # Pages of organisation membership to read before giving up. 100 pages is
 # 10,000 members; beyond that the membership is reported as unknown rather than
 # silently truncated.
 _MEMBER_PAGE_LIMIT = 100
-
-# Fields whose failure can be isolated to the data they feed instead of failing
-# the whole repository. Only fields the model already carries a dedicated
-# "unknown" for qualify: ``pullRequests`` has ``open_pull_requests=None``, which
-# every pull-request table already renders as unknown, so a token that cannot
-# read pull requests loses that one table rather than the repository's releases,
-# issues, tags and Dependabot posture as well.
-_ISOLABLE_FIELDS = frozenset({"pullRequests"})
 
 
 def _log_unreadable_membership(org: str, *, outside: bool = False) -> None:
@@ -59,66 +52,6 @@ def _log_unreadable_membership(org: str, *, outside: bool = False) -> None:
         org,
         reason,
     )
-
-
-def _alias_errors(errors: object, alias_count: int) -> tuple[set[str], set[str]]:
-    """Alias keys implicated by a batched query's ``errors`` array.
-
-    Returns ``(unreadable, pull_requests_only)``: aliases that must be failed
-    wholesale, and aliases whose only failures were confined to fields in
-    :data:`_ISOLABLE_FIELDS`.
-
-    GitHub reports a *field-level* failure with HTTP 200: the alias is still a
-    populated dictionary, the field that failed is null, and an ``errors``
-    entry carries its path (e.g. ``["r3", "latestRelease"]``). Parsing such a
-    node would convert a read failure into a confident negative -- a nulled
-    ``latestRelease`` is indistinguishable from "never released" -- so the
-    whole alias is treated as unreadable rather than partially trusted.
-
-    The alias is failed wholesale rather than per field, because a per-field
-    flag would have to be threaded through every table to be honest about which
-    half of a row is trustworthy, whereas one unknown repository is already a
-    state every table renders correctly. The exception is a field the model
-    *already* carries a dedicated unknown for: failing the whole repository for
-    one of those would let an optional, permission-sensitive section take the
-    rest of the report down with it -- a token without pull-request access would
-    lose its releases, issues and Dependabot posture too.
-
-    An error whose path names no alias cannot be attributed, so it implicates
-    every alias in the batch: with no way to tell which repositories it
-    touched, treating any of them as successfully read would be a guess.
-
-    An error *nested* inside an isolable field is classified by that field, and
-    deliberately so. ``reviewThreads`` is non-null in GitHub's schema
-    (``PullRequestReviewThreadConnection!``), so a resolver failure there does
-    not null the connection: it propagates up to the nearest nullable ancestor,
-    which is the pull-request node itself. The node arrives as ``null`` and
-    carries none of its facts, so ignoring the error would silently drop that
-    pull request from every column while ``totalCount`` still counted it --
-    understating the breakdown with nothing to say so. Failing the connection
-    reports the repository as unknown instead, which every table renders
-    correctly.
-    """
-    all_aliases = {f"r{i}" for i in range(alias_count)}
-    if not isinstance(errors, list):
-        return set(), set()
-    unreadable: set[str] = set()
-    isolated: set[str] = set()
-    for entry in errors:
-        path = entry.get("path") if isinstance(entry, dict) else None
-        if not isinstance(path, list) or not path:
-            return all_aliases, set()
-        head = path[0]
-        if not isinstance(head, str) or head not in all_aliases:
-            return all_aliases, set()
-        field = path[1] if len(path) > 1 else None
-        if isinstance(field, str) and field in _ISOLABLE_FIELDS:
-            isolated.add(head)
-        else:
-            unreadable.add(head)
-    # An alias with failures on both sides is unreadable: the isolable one is
-    # the lesser problem, and the other still poisons the rest of the node.
-    return unreadable, isolated - unreadable
 
 
 class OrgReadClient(AlertReads):
@@ -320,9 +253,13 @@ class OrgReadClient(AlertReads):
         load-bearing for whole report sections (releases/tags, Dependabot
         enablement, open issues), and its defaults are indistinguishable from
         confident negatives ("never released"), so a wholly failed query --
-        a non-200 response that survived the shared retry/backoff policy, or
-        a 200 carrying no ``data`` object -- raises :class:`NetworkError` to
-        abort the run rather than fabricating results. A repository that
+        a non-200 response that survived the shared retry/backoff policy, a
+        200 carrying no ``data`` object, or a 200 whose ``errors`` report the
+        query's resource limits exceeded -- raises :class:`GraphBatchError`
+        (a :class:`NetworkError`; see :func:`_batch_response`) saying whether
+        the caller may retry the same repositories in smaller batches, so a
+        failure that query size could explain is split and any other aborts
+        the run rather than fabricating results. A repository that
         cannot be fully read -- a ``null`` alias, or a populated alias whose
         ``errors`` entry shows a field failed to resolve -- degrades to
         ``RepoGraphData(unreadable=True)`` so downstream tables report it as
@@ -350,25 +287,17 @@ class OrgReadClient(AlertReads):
             self._graphql_url,
             json={"query": query, "variables": variables},
         )
-        if resp.status_code != 200:
-            status = resp.status_code
-            await resp.aclose()  # unread body would leak a pooled connection
-            raise NetworkError(
-                f"GraphQL prefetch for {org} failed with HTTP {status} after "
-                "exhausting retries; aborting because the release/tag, "
-                "Dependabot-enablement and open-issues data for "
-                f"{len(names)} repositories would otherwise be fabricated "
-                "from defaults (e.g. reported as never released)."
-            )
-        body = resp.json()
-        data = body.get("data")
-        await resp.aclose()  # release the connection once the body is read
+        status = resp.status_code
+        # A non-200 body is never read; closing either way returns the pooled
+        # connection rather than leaking it.
+        body = resp.json() if status == 200 else None
+        await resp.aclose()
+        data, errors = _batch_response(org, len(names), status=status, body=body)
         # GitHub answers a partially-refused query with HTTP 200: the readable
         # aliases populated, the rest null or missing individual fields, and an
         # ``errors`` array explaining why. The paths are both logged for
         # diagnosis and used to fail the affected aliases, since a field nulled
         # by a failed read is indistinguishable from a genuine absence.
-        errors = body.get("errors")
         errored_aliases, pull_request_errors = _alias_errors(errors, len(names))
         if errors:
             log.warning(
@@ -382,15 +311,6 @@ class OrgReadClient(AlertReads):
                     for e in errors[:5]
                     if isinstance(e, dict)
                 ),
-            )
-        if not isinstance(data, dict):
-            # HTTP 200 with no data object at all: the whole batch failed
-            # (e.g. a timed-out or refused query). Same stakes as a non-200.
-            raise NetworkError(
-                f"GraphQL prefetch for {org} returned no data for any of "
-                f"{len(names)} repositories; aborting rather than reporting "
-                "fabricated defaults. "
-                f"errors={errors!r}"
             )
         for i, name in enumerate(names):
             alias = f"r{i}"

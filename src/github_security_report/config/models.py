@@ -175,6 +175,19 @@ class ReportConfig:
     # otherwise the signal's section reports a single "Skipping feature" line.
     # False disables the check and always probes every signal.
     gating: bool = True
+    # Repositories per batched GraphQL prefetch query (the releases/tags,
+    # Dependabot-enablement, open-issues and pull-request data). GitHub caps
+    # the work one GraphQL query may do at roughly ten seconds of execution
+    # and reports a breach as a 502/504 gateway timeout, a 200 with no data,
+    # or a 200 whose errors say the resource limits were exceeded (see
+    # client/batch_errors.py). Each aliased repository adds a few hundred
+    # milliseconds, so the ceiling is a matter of latency, not node cost: 25
+    # repositories measured at ~9 s and failed intermittently; 10 measured at
+    # ~3.5 s, leaving headroom for GitHub having a slow day. The collector
+    # halves a batch that fails any of those ways, so this is a starting point
+    # rather than a hard limit -- but a larger value buys nothing except a
+    # longer first failure.
+    graph_batch: int = 10
     # Read-only mapping (frozen dataclasses do not deep-freeze a plain dict, so a
     # MappingProxyType prevents in-place mutation of a shared config).
     ruleset_workflows: Mapping[str, str] = field(
