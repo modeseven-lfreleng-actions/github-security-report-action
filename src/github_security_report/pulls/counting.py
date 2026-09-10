@@ -25,6 +25,7 @@ from github_security_report.pulls.columns import (
     HUMAN_COLUMN,
     MINE_ROW,
     OTHERS_ROW,
+    REVIEW_COLUMN,
     UNASSIGNED_ROW,
 )
 
@@ -86,6 +87,11 @@ def count_pull_requests(
             counts[CONFLICT_COLUMN] += 1
         if pull.copilot_unresolved is True:
             counts[COPILOT_COLUMN] += 1
+        # Review needs no such hedge in practice -- ``reviewDecision`` is exact
+        # at any review count -- but is tested identically so the four blocked
+        # columns share one rule: count what is established, nothing else.
+        if pull.changes_requested is True:
+            counts[REVIEW_COLUMN] += 1
     return counts
 
 
@@ -157,10 +163,11 @@ def _blocked_count(pulls: tuple[PullRequestRef, ...]) -> int:
     stuck ones. The table already says the columns overlap; the ranking has
     to agree with it.
 
-    Unresolved Copilot feedback joins the union because it is the same kind of
-    fact as the other two -- work the pull request is waiting on a human for --
-    and the table already colours it as blocking. Leaving it out would rank a
-    repository whose whole backlog is awaiting review below an untouched one.
+    Unresolved Copilot feedback and a reviewer's requested changes join the
+    union because they are the same kind of fact as the other two -- work the
+    pull request is waiting on somebody for -- and the table already colours
+    both as blocking. Leaving them out would rank a repository whose whole
+    backlog is awaiting review below an untouched one.
     """
     return sum(
         1
@@ -168,4 +175,5 @@ def _blocked_count(pulls: tuple[PullRequestRef, ...]) -> int:
         if pull.failing is True
         or pull.conflicting is True
         or pull.copilot_unresolved is True
+        or pull.changes_requested is True
     )

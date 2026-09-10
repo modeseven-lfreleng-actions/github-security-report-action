@@ -58,6 +58,7 @@ def _pull(
     conflicting: bool | None = None,
     failing: bool | None = None,
     copilot_unresolved: bool | None = None,
+    changes_requested: bool | None = None,
     assignees: tuple[str, ...] = (),
 ) -> PullRequestRef:
     return PullRequestRef(
@@ -68,6 +69,7 @@ def _pull(
         conflicting=conflicting,
         failing=failing,
         copilot_unresolved=copilot_unresolved,
+        changes_requested=changes_requested,
     )
 
 
@@ -293,6 +295,7 @@ class TestBuildPullRequestsTable:
             "Auto",
             "Conflict",
             "Fail",
+            "Review",
             "Copilot",
             "Draft",
             "Total",
@@ -341,12 +344,13 @@ class TestBuildPullRequestsTable:
             a=RepoGraphData(
                 open_pull_requests=6,
                 pull_requests=(
-                    _pull(1, copilot_unresolved=True),
+                    _pull(1, copilot_unresolved=True, changes_requested=True),
                     _pull(
                         2,
                         _author("outsider", association="NONE"),
                         draft=True,
                         copilot_unresolved=True,
+                        changes_requested=True,
                     ),
                     _pull(
                         3,
@@ -354,6 +358,7 @@ class TestBuildPullRequestsTable:
                         draft=True,
                         failing=True,
                         copilot_unresolved=True,
+                        changes_requested=True,
                     ),
                     _pull(
                         4,
@@ -362,6 +367,7 @@ class TestBuildPullRequestsTable:
                         failing=True,
                         conflicting=True,
                         copilot_unresolved=True,
+                        changes_requested=True,
                     ),
                     _pull(
                         5,
@@ -376,8 +382,8 @@ class TestBuildPullRequestsTable:
             )
         )
         table = _build(graph, ["a"])
-        # Human, Ext, Auto, Conflict, Fail, Copilot, Draft, Total
-        assert table.rows[0].cells == ("4", "3", "2", "1", "2", "5", "3", "6")
+        # Human, Ext, Auto, Conflict, Fail, Review, Copilot, Draft, Total
+        assert table.rows[0].cells == ("4", "3", "2", "1", "2", "4", "5", "3", "6")
 
     def test_collected_members_change_the_external_count(self) -> None:
         graph = _graph(
@@ -589,18 +595,41 @@ class TestCellLevels:
             a=RepoGraphData(
                 open_pull_requests=1,
                 pull_requests=(
-                    _pull(1, conflicting=True, failing=True, copilot_unresolved=True),
+                    _pull(
+                        1,
+                        conflicting=True,
+                        failing=True,
+                        copilot_unresolved=True,
+                        changes_requested=True,
+                    ),
                 ),
             )
         )
         levels = self._levels(_build(graph, ["a"]))
         assert levels[pulls.CONFLICT_COLUMN] == CELL_BAD
         assert levels[pulls.FAILING_COLUMN] == CELL_BAD
-        assert levels[pulls.COPILOT_COLUMN] == CELL_BAD
+        assert levels[pulls.REVIEW_COLUMN] == CELL_BAD
 
-    def test_any_unresolved_copilot_feedback_reads_as_bad(self) -> None:
-        # The column exists to pull the eye to pull requests waiting on a human
-        # to answer a review, so a single one is enough to colour the count.
+    def test_copilot_feedback_reads_one_step_below_a_person(self) -> None:
+        # Deliberately amber where the other blockers are red. Automated review
+        # feedback is worth answering but nobody is waiting on it, and there is
+        # far more of it -- colouring the two alike would let the bot's threads
+        # mask the rarer case that actually holds a person up.
+        graph = _graph(
+            a=RepoGraphData(
+                open_pull_requests=1,
+                pull_requests=(
+                    _pull(1, copilot_unresolved=True, changes_requested=True),
+                ),
+            )
+        )
+        levels = self._levels(_build(graph, ["a"]))
+        assert levels[pulls.COPILOT_COLUMN] == CELL_WARN
+        assert levels[pulls.REVIEW_COLUMN] == CELL_BAD
+
+    def test_any_unresolved_copilot_feedback_is_emphasised(self) -> None:
+        # The column exists to pull the eye to pull requests waiting on a reply,
+        # so a single one is enough to colour the count.
         graph = _graph(
             a=RepoGraphData(
                 open_pull_requests=3,
@@ -613,7 +642,22 @@ class TestCellLevels:
         )
         row = _build(graph, ["a"]).rows[0]
         assert _cell(row, pulls.COPILOT_COLUMN) == "1"
-        assert self._levels(_build(graph, ["a"]))[pulls.COPILOT_COLUMN] == CELL_BAD
+        assert self._levels(_build(graph, ["a"]))[pulls.COPILOT_COLUMN] == CELL_WARN
+
+    def test_any_requested_changes_is_emphasised(self) -> None:
+        graph = _graph(
+            a=RepoGraphData(
+                open_pull_requests=3,
+                pull_requests=(
+                    _pull(1),
+                    _pull(2),
+                    _pull(3, changes_requested=True),
+                ),
+            )
+        )
+        row = _build(graph, ["a"]).rows[0]
+        assert _cell(row, pulls.REVIEW_COLUMN) == "1"
+        assert self._levels(_build(graph, ["a"]))[pulls.REVIEW_COLUMN] == CELL_BAD
 
     def test_zero_counts_are_never_emphasised(self) -> None:
         # A table of red zeros teaches the reader to ignore the colour, which
@@ -623,6 +667,7 @@ class TestCellLevels:
         assert levels[pulls.CONFLICT_COLUMN] is None
         assert levels[pulls.FAILING_COLUMN] is None
         assert levels[pulls.COPILOT_COLUMN] is None
+        assert levels[pulls.REVIEW_COLUMN] is None
         assert levels[pulls.EXTERNAL_COLUMN] is None
 
     def test_draft_and_total_carry_no_emphasis(self) -> None:

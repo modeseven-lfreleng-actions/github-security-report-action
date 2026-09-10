@@ -178,7 +178,7 @@ class IssueRef:
 class PullRequestRef:
     """One open pull request's review-load facts.
 
-    ``draft`` and the three blocked flags are independent of the author and of
+    ``draft`` and the four blocked flags are independent of the author and of
     each other, so one pull request may be a draft *and* conflicting *and*
     awaiting review; the table counts each axis separately rather than bucketing
     rows.
@@ -207,6 +207,19 @@ class PullRequestRef:
     # the threads this run never saw. As with ``conflicting`` and ``failing``,
     # None is "not established" rather than "nothing outstanding".
     copilot_unresolved: bool | None = None
+    # True when a human reviewer's latest opinionated review requested changes.
+    # Read from GitHub's ``reviewDecision``, which is a scalar computed over
+    # every review rather than a windowed sample -- so unlike
+    # ``copilot_unresolved`` this answer is exact at any review count and has no
+    # indeterminate reading of its own. None means the field was absent from the
+    # payload entirely; an explicit null decision is a definite False, since it
+    # says GitHub reached no blocking verdict rather than that nobody looked.
+    #
+    # Only CHANGES_REQUESTED counts. REVIEW_REQUIRED is deliberately excluded:
+    # it reports that a branch rule demands a review, not that anyone objected,
+    # so on an organisation that requires review by default it would mark almost
+    # every human pull request and say nothing about any of them.
+    changes_requested: bool | None = None
 
 
 @dataclass

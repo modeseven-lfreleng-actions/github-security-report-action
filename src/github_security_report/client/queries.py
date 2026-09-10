@@ -179,6 +179,7 @@ fragment RepoData on Repository {{
       number
       isDraft
       mergeable
+      reviewDecision
       authorAssociation
       author {{ __typename login }}
       assignees(first: {_ASSIGNEE_WINDOW}) {{ nodes {{ login }} }}

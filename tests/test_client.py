@@ -1752,6 +1752,7 @@ def _graph_pull_request(
     assignees: Sequence[str] | None = (),
     review_threads: Sequence[dict] | None = (),
     review_thread_total: int | None = None,
+    review_decision: str | None = None,
 ) -> dict:
     """Build one pull-request node as the batched query returns it."""
     threads = (
@@ -1770,6 +1771,7 @@ def _graph_pull_request(
         "number": number,
         "isDraft": draft,
         "mergeable": mergeable,
+        "reviewDecision": review_decision,
         "authorAssociation": association,
         "author": ({"__typename": typename, "login": login} if login else None),
         "assignees": (
@@ -1976,6 +1978,55 @@ async def test_repo_graph_batch_unusable_thread_total_is_indeterminate(
     )
     out = await client.repo_graph_batch("o", ["a"])
     assert [p.copilot_unresolved for p in out["a"].pull_requests] == [None, None]
+
+
+@respx.mock
+async def test_only_changes_requested_counts_as_a_blocking_review(
+    client: GitHubClient,
+) -> None:
+    # An allow-list of the one state that means a reviewer objected, not
+    # "anything that is not APPROVED". REVIEW_REQUIRED matters most here: it
+    # reports that a branch rule demands a review, which on an organisation that
+    # requires review by default is true of nearly every pull request and says
+    # nothing about any of them. Writing the rule positively also leaves a state
+    # GitHub adds later uncounted rather than pre-counted as a blocker.
+    node = _graph_repo_node(
+        pull_requests=[
+            _graph_pull_request(1, review_decision="CHANGES_REQUESTED"),
+            _graph_pull_request(2, review_decision="REVIEW_REQUIRED"),
+            _graph_pull_request(3, review_decision="APPROVED"),
+            # An explicit null is a definite False: GitHub reached no blocking
+            # verdict, which is not the same as the question going unasked.
+            _graph_pull_request(4, review_decision=None),
+        ],
+        pull_request_total=4,
+    )
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(200, json={"data": {"r0": node}})
+    )
+    out = await client.repo_graph_batch("o", ["a"])
+    assert [p.changes_requested for p in out["a"].pull_requests] == [
+        True,
+        False,
+        False,
+        False,
+    ]
+
+
+@respx.mock
+async def test_absent_review_decision_is_indeterminate(
+    client: GitHubClient,
+) -> None:
+    # A field that never arrived is not a reading of "no changes requested".
+    # Distinct from the explicit null above, which is one.
+    node_pull = _graph_pull_request(1)
+    del node_pull["reviewDecision"]
+    node = _graph_repo_node(pull_requests=[node_pull], pull_request_total=1)
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(200, json={"data": {"r0": node}})
+    )
+    out = await client.repo_graph_batch("o", ["a"])
+    assert out["a"].pull_requests[0].changes_requested is None
 
 
 @respx.mock
