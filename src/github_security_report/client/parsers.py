@@ -17,6 +17,7 @@ from typing import cast
 import httpx
 
 from github_security_report.client.copilot import _copilot_unresolved
+from github_security_report.client.reviews import _changes_requested
 from github_security_report.models import (
     AuthorRef,
     IssueRef,
@@ -315,30 +316,6 @@ def _assignee_logins(node: dict) -> tuple[str, ...]:
         if isinstance(entry, dict) and (login := entry.get("login")):
             logins.append(str(login).lower())
     return tuple(logins)
-
-
-def _changes_requested(node: dict) -> bool | None:
-    """Whether a human reviewer's latest opinionated review requested changes.
-
-    ``reviewDecision`` is a scalar GitHub computes over every review, so this
-    answer is exact at any review count -- there is no window to fall short and
-    so no indeterminate reading of the kind the review-thread scan needs.
-
-    Only ``CHANGES_REQUESTED`` counts, and the test is an allow-list of that one
-    state rather than "anything that is not APPROVED". ``REVIEW_REQUIRED`` says a
-    branch rule demands a review, not that a reviewer objected, so counting it
-    would mark nearly every pull request in an organisation that requires review
-    by default. Writing the rule positively also means a state GitHub adds later
-    arrives *uncounted* rather than pre-counted as a blocker.
-
-    A missing key is ``None`` (the field was never read); an explicit null is
-    ``False``, since it reports that GitHub reached no blocking verdict rather
-    than that the question went unasked.
-    """
-    if "reviewDecision" not in node:
-        return None
-    decision = node["reviewDecision"]
-    return isinstance(decision, str) and decision == "CHANGES_REQUESTED"
 
 
 def _pull_request_ref(node: object) -> PullRequestRef | None:

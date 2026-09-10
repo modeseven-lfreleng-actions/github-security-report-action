@@ -207,13 +207,18 @@ class PullRequestRef:
     # the threads this run never saw. As with ``conflicting`` and ``failing``,
     # None is "not established" rather than "nothing outstanding".
     copilot_unresolved: bool | None = None
-    # True when a human reviewer's latest opinionated review requested changes.
-    # Read from GitHub's ``reviewDecision``, which is a scalar computed over
-    # every review rather than a windowed sample -- so unlike
-    # ``copilot_unresolved`` this answer is exact at any review count and has no
-    # indeterminate reading of its own. None means the field was absent from the
-    # payload entirely; an explicit null decision is a definite False, since it
-    # says GitHub reached no blocking verdict rather than that nobody looked.
+    # True when a *person* has requested changes and not withdrawn it. Read
+    # from ``reviewDecision``, which GitHub computes over every review and so is
+    # exact at any review count, attributed through the bounded window of
+    # opinionated reviews -- the decision names nobody, and a GitHub App can
+    # request changes exactly as a person can.
+    #
+    # None where that attribution could not be settled: the fields were
+    # unreadable, a request carried no author, or the window held only automated
+    # requests without covering every reviewer. As with the flags above, None is
+    # "not established" rather than "nothing outstanding" -- though it is far
+    # rarer here, since it needs GitHub to report changes requested *and* the
+    # window to fall short.
     #
     # Only CHANGES_REQUESTED counts. REVIEW_REQUIRED is deliberately excluded:
     # it reports that a branch rule demands a review, not that anyone objected,

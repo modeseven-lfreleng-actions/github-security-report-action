@@ -431,6 +431,52 @@ class TestBuildPullRequestsTable:
         table = _build(graph, ["calm", "awaiting"])
         assert [r.repo.name for r in table.rows] == ["awaiting", "calm"]
 
+    def test_requested_changes_ranks_a_repository_as_stuck(self) -> None:
+        # Same rule for the other reviewer. A backlog where somebody asked for
+        # changes is stuck, so it must not rank below an untouched one of equal
+        # size -- and this is the only difference between the two rows, so the
+        # tie-breaker cannot regress independently of the displayed count.
+        graph = _graph(
+            calm=RepoGraphData(
+                open_pull_requests=2, pull_requests=(_pull(1), _pull(2))
+            ),
+            awaiting=RepoGraphData(
+                open_pull_requests=2,
+                pull_requests=(_pull(1, changes_requested=True), _pull(2)),
+            ),
+        )
+        table = _build(graph, ["calm", "awaiting"])
+        assert [r.repo.name for r in table.rows] == ["awaiting", "calm"]
+
+    def test_blocked_columns_overlap_without_double_ranking(self) -> None:
+        # The tie-breaker is a union, not a sum: one pull request that is
+        # failing, conflicting, awaiting Copilot *and* carrying requested
+        # changes counts once, so it cannot outrank two separately stuck ones.
+        graph = _graph(
+            all_at_once=RepoGraphData(
+                open_pull_requests=2,
+                pull_requests=(
+                    _pull(
+                        1,
+                        failing=True,
+                        conflicting=True,
+                        copilot_unresolved=True,
+                        changes_requested=True,
+                    ),
+                    _pull(2),
+                ),
+            ),
+            two_stuck=RepoGraphData(
+                open_pull_requests=2,
+                pull_requests=(
+                    _pull(1, failing=True),
+                    _pull(2, changes_requested=True),
+                ),
+            ),
+        )
+        table = _build(graph, ["all_at_once", "two_stuck"])
+        assert [r.repo.name for r in table.rows] == ["two_stuck", "all_at_once"]
+
     def test_blocked_tiebreaker_counts_each_pull_request_once(self) -> None:
         # Fail and Conflict overlap, so summing the two columns would count a
         # pull request that is both as two -- letting one stuck pull request
@@ -972,6 +1018,34 @@ class TestTruncationAndMembershipCaveats:
             )
         )
         assert "Copilot undercounts" not in _build(graph, ["a"]).resolved_description()
+
+    def test_an_unattributed_review_is_declared_a_lower_bound(self) -> None:
+        # Same contract as the Copilot caveat, for the same reason: the zero is
+        # this run's opinionated-review window failing to attribute a request
+        # GitHub does report, not evidence that nobody asked.
+        graph = _graph(
+            a=RepoGraphData(
+                open_pull_requests=1,
+                pull_requests=(_pull(1, changes_requested=None),),
+            )
+        )
+        table = _build(graph, ["a"])
+        assert _cell(table.rows[0], pulls.REVIEW_COLUMN) == "0"
+        described = table.resolved_description()
+        assert "Review undercounts" in described
+        assert "lower bound" in described
+
+    def test_settled_review_readings_carry_no_caveat(self) -> None:
+        graph = _graph(
+            a=RepoGraphData(
+                open_pull_requests=2,
+                pull_requests=(
+                    _pull(1, changes_requested=False),
+                    _pull(2, changes_requested=True),
+                ),
+            )
+        )
+        assert "Review undercounts" not in _build(graph, ["a"]).resolved_description()
 
     def test_the_assigned_table_calls_its_own_total_a_lower_bound(self) -> None:
         # The filtered table's Total is len(selected) from the window, not the

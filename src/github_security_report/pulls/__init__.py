@@ -85,6 +85,7 @@ from github_security_report.pulls.counting import (
     copilot_indeterminate,
     count_pull_requests,
     is_mine,
+    review_indeterminate,
 )
 from github_security_report.pulls.presentation import (
     _cell_levels,
@@ -153,4 +154,5 @@ __all__ = [
     "is_automation_author",
     "is_external_author",
     "is_mine",
+    "review_indeterminate",
 ]

@@ -694,15 +694,15 @@ organisation](#inside-or-outside-the-organisation):
 Pull Requests
 ┏━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━┳━━━━━━┳━━━━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━┳━━━━━━━┓
 ┃ Repository           ┃ Human ┃ Ext ┃ Auto ┃ Conflict ┃ Fail ┃ Review ┃ Copilot ┃ Draft ┃ Total ┃
-┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━╇━━━━━━━┩
+┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━╇━━━━━━━┩
 │ lftools-uv           │     8 │   0 │    0 │        0 │    0 │      0 │       0 │     0 │     8 │
 │ dependamerge         │     3 │   0 │    0 │        0 │    0 │      1 │       2 │     0 │     3 │
 │ gha-workflow-linter  │     2 │   0 │    0 │        0 │    1 │      0 │       0 │     1 │     2 │
 │ harden-runner-block- │     1 │   0 │    0 │        1 │    0 │      0 │       0 │     1 │     1 │
 │ action               │       │     │      │          │      │        │         │       │       │
-├────────────────────┼───────┼─────┼──────┼──────────┼──────┼────────┼─────────┼───────┼───────┤
+├──────────────────────┼───────┼─────┼──────┼──────────┼──────┼────────┼─────────┼───────┼───────┤
 │ Total                │    14 │   0 │    0 │        1 │    1 │      1 │       2 │     2 │    14 │
-└────────────────────┴───────┴─────┴──────┴──────────┴──────┴────────┴─────────┴───────┴───────┘
+└──────────────────────┴───────┴─────┴──────┴──────────┴──────┴────────┴─────────┴───────┴───────┘
   … and 9 more
   ❌ 13 With open pull requests
   ✅ 104 No open pull requests
@@ -736,21 +736,34 @@ readings of "human" apart.
 
 #### Requested changes
 
-`Review` counts pull requests whose `reviewDecision` is `CHANGES_REQUESTED`.
-GitHub computes that over every review, so unlike the Copilot column it is
-**exact at any review count** — there is no window to fall short of and no
-indeterminate reading.
+`Review` counts pull requests where **a person** has asked for changes and not
+withdrawn it.
 
-It is a human signal by construction: GitHub's automated reviewer only ever files
-`COMMENTED` reviews, never an opinionated one, so a requested change can only
-have come from a person.
+Two fields answer that, each covering the other's blind spot. `reviewDecision` is
+GitHub's own verdict, computed over every review and accounting for dismissals,
+so it is **exact at any review count** — but it names nobody, and a GitHub App
+holding pull-request write permission can request changes exactly as a person
+can. `latestOpinionatedReviews` names the reviewers, but is a bounded window of
+five (one review per reviewer, so five reviewers rather than five reviews).
 
-Only `CHANGES_REQUESTED` counts. **`REVIEW_REQUIRED` is deliberately excluded**:
+So the decision **gates** and the window **attributes**. Anything other than
+`CHANGES_REQUESTED` is a definite zero whatever the window holds, and only once
+GitHub says changes are outstanding does the reviewer's identity matter — which
+keeps the cheap exact answer for almost every pull request and pays the window's
+uncertainty on the few where it changes the reading. Automated reviewers are
+recognised by the same rule as the `Auto` column.
+
+Only `CHANGES_REQUESTED` gates. **`REVIEW_REQUIRED` is deliberately excluded**:
 it reports that a branch rule demands a review, not that anybody objected, so on
 an organisation that requires review by default it would mark nearly every human
 pull request and distinguish none of them. The rule is written as an allow-list
 of the one blocking state rather than as "anything that is not `APPROVED`", so a
 state GitHub adds later arrives uncounted rather than pre-counted as a blocker.
+
+Where a request for changes cannot be attributed — the reviews were unreadable,
+the author is gone, or the window held only automated requests without covering
+every reviewer — the pull request is left **uncounted rather than credited to a
+person**, and the table says so in its description.
 
 #### Unresolved Copilot feedback
 
@@ -1007,7 +1020,7 @@ reports as an App and any unrecognised login carrying the `[bot]` marker — so 
 future bot is classified as automation rather than mistaken for an outside
 contributor.
 
-`Fail`, `Conflict` and `Copilot` count only **established** states. GitHub
+`Fail`, `Conflict`, `Review` and `Copilot` count only **established** states. GitHub
 computes mergeability lazily and answers `UNKNOWN` until it settles, and reports
 no check rollup at all when no checks have run; neither absence is evidence that
 a pull request is ready, so neither is counted either way. `Copilot` follows the
@@ -1021,9 +1034,10 @@ holding any such reading says so in its description: `Copilot` then
 **undercounts and should be read as a lower bound**, exactly as `Ext` does when
 membership cannot be read.
 
-`Review` needs no such hedge. `reviewDecision` is a single value GitHub computes
-over every review, so it is exact however long the review ran — there is no
-window to fall short of.
+`Review` carries a weaker version of the same hedge, and earns it far less
+often: `reviewDecision` is exact, so only a pull request GitHub *does* report
+changes requested on can leave the question open, and then only when the
+opinionated-review window fails to attribute it to anybody.
 
 Repositories with no open pull requests are counted in the footer rather than
 listed. Rows rank by total open pull requests, then by those failing,

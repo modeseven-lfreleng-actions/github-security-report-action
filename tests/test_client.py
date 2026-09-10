@@ -1740,6 +1740,18 @@ def _copilot_thread(
     }
 
 
+def _opinionated_review(
+    state: str = "CHANGES_REQUESTED",
+    login: str | None = "alice",
+    typename: str = "User",
+) -> dict:
+    """One latest-opinionated-review node, authored by ``login``."""
+    return {
+        "state": state,
+        "author": ({"__typename": typename, "login": login} if login else None),
+    }
+
+
 def _graph_pull_request(
     number: int = 1,
     *,
@@ -1753,6 +1765,8 @@ def _graph_pull_request(
     review_threads: Sequence[dict] | None = (),
     review_thread_total: int | None = None,
     review_decision: str | None = None,
+    opinionated_reviews: Sequence[dict] | None = (),
+    opinionated_review_total: int | None = None,
 ) -> dict:
     """Build one pull-request node as the batched query returns it."""
     threads = (
@@ -1772,6 +1786,18 @@ def _graph_pull_request(
         "isDraft": draft,
         "mergeable": mergeable,
         "reviewDecision": review_decision,
+        "latestOpinionatedReviews": (
+            None
+            if opinionated_reviews is None
+            else {
+                "totalCount": (
+                    len(opinionated_reviews)
+                    if opinionated_review_total is None
+                    else opinionated_review_total
+                ),
+                "nodes": list(opinionated_reviews),
+            }
+        ),
         "authorAssociation": association,
         "author": ({"__typename": typename, "login": login} if login else None),
         "assignees": (
@@ -1992,7 +2018,11 @@ async def test_only_changes_requested_counts_as_a_blocking_review(
     # GitHub adds later uncounted rather than pre-counted as a blocker.
     node = _graph_repo_node(
         pull_requests=[
-            _graph_pull_request(1, review_decision="CHANGES_REQUESTED"),
+            _graph_pull_request(
+                1,
+                review_decision="CHANGES_REQUESTED",
+                opinionated_reviews=[_opinionated_review()],
+            ),
             _graph_pull_request(2, review_decision="REVIEW_REQUIRED"),
             _graph_pull_request(3, review_decision="APPROVED"),
             # An explicit null is a definite False: GitHub reached no blocking
@@ -2009,6 +2039,105 @@ async def test_only_changes_requested_counts_as_a_blocking_review(
         True,
         False,
         False,
+        False,
+    ]
+
+
+@respx.mock
+async def test_an_app_requesting_changes_is_not_a_person(
+    client: GitHubClient,
+) -> None:
+    # ``reviewDecision`` names nobody, and a GitHub App holding pull-request
+    # write permission can request changes exactly as a person can -- so the
+    # decision alone cannot carry a column that claims to count people. The
+    # bounded window of opinionated reviews is what attributes it.
+    node = _graph_repo_node(
+        pull_requests=[
+            _graph_pull_request(
+                1,
+                review_decision="CHANGES_REQUESTED",
+                opinionated_reviews=[
+                    _opinionated_review(login="some-policy-bot", typename="Bot")
+                ],
+            ),
+            # A bot's request beside a person's still counts: the person is
+            # waiting either way.
+            _graph_pull_request(
+                2,
+                review_decision="CHANGES_REQUESTED",
+                opinionated_reviews=[
+                    _opinionated_review(login="some-policy-bot", typename="Bot"),
+                    _opinionated_review(login="alice"),
+                ],
+            ),
+            # An APPROVED review from a person does not make the bot's request
+            # human: only a CHANGES_REQUESTED review can.
+            _graph_pull_request(
+                3,
+                review_decision="CHANGES_REQUESTED",
+                opinionated_reviews=[
+                    _opinionated_review(login="some-policy-bot", typename="Bot"),
+                    _opinionated_review(state="APPROVED", login="alice"),
+                ],
+            ),
+        ],
+        pull_request_total=3,
+    )
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(200, json={"data": {"r0": node}})
+    )
+    out = await client.repo_graph_batch("o", ["a"])
+    assert [p.changes_requested for p in out["a"].pull_requests] == [
+        False,
+        True,
+        False,
+    ]
+
+
+@respx.mock
+async def test_an_unattributable_request_for_changes_is_indeterminate(
+    client: GitHubClient,
+) -> None:
+    # Three ways the attribution can fail, none of which may read as "nobody is
+    # waiting": a window that showed only automated requests without covering
+    # every reviewer, a request whose author is gone, and an unreadable
+    # connection. The gate still applies -- a pull request GitHub does not
+    # report changes requested on is a definite False whatever the window says.
+    truncated = _graph_pull_request(
+        1,
+        review_decision="CHANGES_REQUESTED",
+        opinionated_reviews=[
+            _opinionated_review(login="some-policy-bot", typename="Bot")
+        ],
+        opinionated_review_total=9,
+    )
+    no_author = _graph_pull_request(
+        2,
+        review_decision="CHANGES_REQUESTED",
+        opinionated_reviews=[_opinionated_review(login=None)],
+    )
+    unreadable = _graph_pull_request(
+        3, review_decision="CHANGES_REQUESTED", opinionated_reviews=None
+    )
+    # Truncated, but GitHub says nothing is outstanding: still a definite False.
+    gated = _graph_pull_request(
+        4,
+        review_decision="APPROVED",
+        opinionated_reviews=[_opinionated_review(login="alice")],
+        opinionated_review_total=9,
+    )
+    node = _graph_repo_node(
+        pull_requests=[truncated, no_author, unreadable, gated],
+        pull_request_total=4,
+    )
+    respx.post(f"{API}/graphql").mock(
+        return_value=httpx.Response(200, json={"data": {"r0": node}})
+    )
+    out = await client.repo_graph_batch("o", ["a"])
+    assert [p.changes_requested for p in out["a"].pull_requests] == [
+        None,
+        None,
+        None,
         False,
     ]
 

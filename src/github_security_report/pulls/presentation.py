@@ -108,6 +108,7 @@ def _describe(
     *,
     filtered: bool,
     copilot_partial: bool = False,
+    review_partial: bool = False,
 ) -> str:
     """Extend the category description with the caveats the table earned.
 
@@ -155,5 +156,14 @@ def _describe(
             "Such a pull request is left uncounted rather than assumed "
             "answered, so Copilot undercounts and should be read as a lower "
             "bound."
+        )
+    if review_partial:
+        description += (
+            " Who asked for changes could not be settled for at least one pull "
+            "request, whose opinionated reviews were unreadable, carried no "
+            "author to attribute a request to, or held only automated requests "
+            "without covering every reviewer. Such a pull request is left "
+            "uncounted rather than credited to a person, so Review undercounts "
+            "and should be read as a lower bound."
         )
     return description

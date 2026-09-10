@@ -87,9 +87,10 @@ def count_pull_requests(
             counts[CONFLICT_COLUMN] += 1
         if pull.copilot_unresolved is True:
             counts[COPILOT_COLUMN] += 1
-        # Review needs no such hedge in practice -- ``reviewDecision`` is exact
-        # at any review count -- but is tested identically so the four blocked
-        # columns share one rule: count what is established, nothing else.
+        # Review needs the same hedge, though it earns it far less often: the
+        # decision is exact, so only a pull request GitHub *does* report changes
+        # requested on can leave the question open, and then only if the window
+        # failed to attribute it.
         if pull.changes_requested is True:
             counts[REVIEW_COLUMN] += 1
     return counts
@@ -152,6 +153,17 @@ def copilot_indeterminate(pulls: tuple[PullRequestRef, ...]) -> bool:
     has not earned.
     """
     return any(pull.copilot_unresolved is None for pull in pulls)
+
+
+def review_indeterminate(pulls: tuple[PullRequestRef, ...]) -> bool:
+    """Whether any of these pull requests left the Review question unsettled.
+
+    Same rule as :func:`copilot_indeterminate` and for the same reason -- a
+    bounded window, not a moment that will settle itself -- but reached far
+    less often, since it needs GitHub to report changes requested *and* the
+    window of opinionated reviews to fail to attribute them to anybody.
+    """
+    return any(pull.changes_requested is None for pull in pulls)
 
 
 def _blocked_count(pulls: tuple[PullRequestRef, ...]) -> int:
